@@ -4,8 +4,10 @@ import requests
 import streamlit as st
 
 API_BASE_URL = os.getenv("AGRIPULSE_API_BASE_URL", "http://127.0.0.1:8000").rstrip("/")
+API_KEY = os.getenv("AGRIPULSE_API_KEY", "agripulse-dev-key")
 FORECAST_API_URL = f"{API_BASE_URL}/forecast"
 HEALTH_API_URL = f"{API_BASE_URL}/health"
+REQUEST_HEADERS = {"X-API-Key": API_KEY}
 
 st.set_page_config(page_title="AgriPulse", page_icon="seedling", layout="wide")
 st.title("AgriPulse - Crop Price Intelligence")
@@ -42,7 +44,12 @@ if st.button("Get Forecast"):
         "language": language,
     }
     try:
-        response = requests.post(FORECAST_API_URL, json=payload, timeout=120)
+        response = requests.post(
+            FORECAST_API_URL,
+            json=payload,
+            headers=REQUEST_HEADERS,
+            timeout=120,
+        )
         response.raise_for_status()
         data = response.json()
 

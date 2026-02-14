@@ -1,0 +1,38 @@
+2026-02-14 19:28:12,926 | INFO | main | GET /health status=200 time=0.00s
+2026-02-14 19:28:12,955 | WARNING | dependencies | Unauthorized request blocked due to invalid API key.
+2026-02-14 19:28:12,956 | ERROR | main | Authentication failed: Invalid or missing API key.
+Traceback (most recent call last):
+  File "C:\Users\hp\OneDrive\Desktop\skill-development\.venv311\Lib\site-packages\starlette\_exception_handler.py", line 42, in wrapped_app
+    await app(scope, receive, sender)
+  File "C:\Users\hp\OneDrive\Desktop\skill-development\.venv311\Lib\site-packages\starlette\routing.py", line 73, in app
+    response = await f(request)
+               ^^^^^^^^^^^^^^^^
+  File "C:\Users\hp\OneDrive\Desktop\skill-development\.venv311\Lib\site-packages\fastapi\routing.py", line 291, in app
+    solved_result = await solve_dependencies(
+                    ^^^^^^^^^^^^^^^^^^^^^^^^^
+  File "C:\Users\hp\OneDrive\Desktop\skill-development\.venv311\Lib\site-packages\fastapi\dependencies\utils.py", line 640, in solve_dependencies
+    solved = await run_in_threadpool(call, **solved_result.values)
+             ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+  File "C:\Users\hp\OneDrive\Desktop\skill-development\.venv311\Lib\site-packages\starlette\concurrency.py", line 37, in run_in_threadpool
+    return await anyio.to_thread.run_sync(func)
+           ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+  File "C:\Users\hp\OneDrive\Desktop\skill-development\.venv311\Lib\site-packages\anyio\to_thread.py", line 63, in run_sync
+    return await get_async_backend().run_sync_in_worker_thread(
+           ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+  File "C:\Users\hp\OneDrive\Desktop\skill-development\.venv311\Lib\site-packages\anyio\_backends\_asyncio.py", line 2502, in run_sync_in_worker_thread
+    return await future
+           ^^^^^^^^^^^^
+  File "C:\Users\hp\OneDrive\Desktop\skill-development\.venv311\Lib\site-packages\anyio\_backends\_asyncio.py", line 986, in run
+    result = context.run(func, *args)
+             ^^^^^^^^^^^^^^^^^^^^^^^^
+  File "C:\Users\hp\OneDrive\Desktop\skill-development\backend\app\core\dependencies.py", line 27, in require_api_key
+    raise AuthenticationError("Invalid or missing API key.")
+app.core.exceptions.AuthenticationError: Invalid or missing API key.
+2026-02-14 19:28:13,065 | INFO | main | GET /best-mandi status=401 time=0.11s
+2026-02-14 19:28:25,104 | INFO | main | GET /best-mandi status=200 time=12.01s
+2026-02-14 19:38:07,682 | INFO | forecast_pipeline | Forecast completed | crop=Wheat | mandi=Delhi Azadpur | change=+2.65% | risk=HIGH
+2026-02-14 19:38:07,696 | INFO | main | POST /forecast status=200 time=11.47s
+2026-02-14 19:38:44,289 | INFO | main | GET /health status=200 time=0.00s
+2026-02-14 19:38:48,179 | INFO | main | GET / status=307 time=0.00s
+2026-02-14 19:38:48,184 | INFO | main | GET /docs status=200 time=0.00s
+2026-02-14 19:38:48,281 | INFO | main | GET /openapi.json status=200 time=0.02s
