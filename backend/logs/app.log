@@ -36,3 +36,33 @@ app.core.exceptions.AuthenticationError: Invalid or missing API key.
 2026-02-14 19:38:48,179 | INFO | main | GET / status=307 time=0.00s
 2026-02-14 19:38:48,184 | INFO | main | GET /docs status=200 time=0.00s
 2026-02-14 19:38:48,281 | INFO | main | GET /openapi.json status=200 time=0.02s
+2026-02-14 21:26:05,530 | INFO | main | OPTIONS /forecast status=405 time=0.00s
+2026-02-14 21:26:29,433 | INFO | main | OPTIONS /forecast status=405 time=0.00s
+2026-02-14 21:26:36,165 | INFO | main | OPTIONS /forecast status=405 time=0.00s
+2026-02-14 21:30:46,204 | INFO | main | OPTIONS /forecast status=405 time=0.00s
+2026-02-14 21:30:49,608 | INFO | main | OPTIONS /forecast status=405 time=0.00s
+2026-02-14 21:30:50,501 | INFO | main | OPTIONS /forecast status=405 time=0.00s
+2026-02-14 22:02:59,467 | INFO | main | GET /health status=200 time=0.01s
+2026-02-14 22:02:59,909 | WARNING | dependencies | Unauthorized request blocked due to invalid API key.
+2026-02-14 22:02:59,912 | WARNING | main | Authentication failed: Invalid or missing API key.
+2026-02-14 22:02:59,913 | INFO | main | POST /forecast status=401 time=0.01s
+2026-02-14 22:03:23,632 | INFO | main | GET /metadata status=200 time=23.26s
+2026-02-14 22:03:24,227 | INFO | main | GET /metadata status=200 time=0.48s
+2026-02-14 22:03:30,438 | INFO | forecast_pipeline | Forecast completed | crop=Onion | mandi=A lot | change=+49.02% | risk=HIGH
+2026-02-14 22:03:30,443 | INFO | main | POST /forecast status=200 time=6.10s
+2026-02-14 22:03:45,801 | INFO | main | GET /best-mandi status=200 time=15.33s
+2026-02-14 22:22:06,663 | INFO | main | OPTIONS /metadata status=200 time=0.00s
+2026-02-14 22:22:06,666 | INFO | main | OPTIONS /metadata status=200 time=0.00s
+2026-02-14 22:22:24,993 | INFO | main | GET /metadata status=200 time=18.32s
+2026-02-14 22:22:24,995 | INFO | main | OPTIONS /metadata status=400 time=0.00s
+2026-02-14 22:22:24,997 | INFO | main | OPTIONS /metadata status=400 time=0.00s
+2026-02-14 22:22:29,819 | INFO | main | GET /metadata status=200 time=4.82s
+2026-02-14 22:24:09,419 | INFO | main | GET /metadata status=200 time=15.80s
+2026-02-14 22:24:15,080 | INFO | main | GET /metadata status=200 time=5.66s
+2026-02-14 22:24:20,107 | INFO | main | GET /metadata status=200 time=5.02s
+2026-02-14 22:24:25,082 | INFO | main | GET /metadata status=200 time=4.97s
+2026-02-14 22:24:31,657 | INFO | main | OPTIONS /metadata status=200 time=0.00s
+2026-02-14 22:24:31,987 | INFO | main | GET /metadata status=200 time=0.33s
+2026-02-14 22:24:36,586 | INFO | main | OPTIONS /forecast status=200 time=0.00s
+2026-02-14 22:24:38,458 | INFO | forecast_pipeline | Forecast completed | crop=Potato | mandi=Ahmedgarh | change=-0.22% | risk=HIGH
+2026-02-14 22:24:38,459 | INFO | main | POST /forecast status=200 time=1.87s

@@ -6,6 +6,8 @@ if "%ROOT:~-1%"=="\" set "ROOT=%ROOT:~0,-1%"
 
 set "VENV_PYTHON=%ROOT%\.venv311\Scripts\python.exe"
 set "BACKEND_DIR=%ROOT%\backend"
+set "BACKEND_HOST=127.0.0.1"
+set "BACKEND_PORT=9877"
 
 if not exist "%VENV_PYTHON%" (
   echo [ERROR] Missing virtual environment: "%ROOT%\.venv311"
@@ -21,8 +23,8 @@ if not exist "%BACKEND_DIR%\app\main.py" (
 )
 
 pushd "%BACKEND_DIR%" || exit /b 1
-echo Starting AgriPulse backend at http://127.0.0.1:8000
-"%VENV_PYTHON%" -m uvicorn app.main:app --reload
+echo Starting AgriPulse backend at http://%BACKEND_HOST%:%BACKEND_PORT%
+"%VENV_PYTHON%" -m uvicorn app.main:app --reload --host %BACKEND_HOST% --port %BACKEND_PORT%
 set "EXIT_CODE=%ERRORLEVEL%"
 popd
 

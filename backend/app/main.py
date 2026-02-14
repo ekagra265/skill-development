@@ -4,6 +4,7 @@ from time import perf_counter
 from typing import Annotated
 
 from fastapi import Depends, FastAPI, Request
+from fastapi.middleware.cors import CORSMiddleware
 from fastapi.responses import JSONResponse, RedirectResponse
 
 from app.core.config import settings
@@ -17,8 +18,21 @@ from app.core.dependencies import (
 from app.core.exceptions import AuthenticationError, DataNotFoundError, ForecastError
 from app.core.logger import logger
 from app.schemas import ForecastRequest, ForecastResponse
+from app.services.crop_prices import (
+    get_latest_crop_prices,
+    get_markets_for_commodity,
+    get_unique_commodities,
+    get_unique_states,
+)
 
 app = FastAPI(title=settings.app_name, version=settings.app_version)
+app.add_middleware(
+    CORSMiddleware,
+    allow_origins=settings.cors_origins,
+    allow_credentials=True,
+    allow_methods=["*"],
+    allow_headers=["*"],
+)
 
 
 @app.middleware("http")
@@ -79,6 +93,28 @@ def root() -> RedirectResponse:
 @app.get("/health")
 def health() -> dict:
     return {"status": "ok", "service": settings.app_name}
+
+
+@app.get("/metadata")
+async def metadata(
+    _: Annotated[None, Depends(require_api_key)],
+    commodity: str | None = None,
+) -> dict:
+    try:
+        if commodity:
+            return {
+                "commodity": commodity,
+                "markets": get_markets_for_commodity(commodity),
+            }
+        return {
+            "states": get_unique_states(),
+            "commodities": get_unique_commodities(),
+            "cropPrices": get_latest_crop_prices(),
+        }
+    except FileNotFoundError as exc:
+        raise DataNotFoundError(str(exc)) from exc
+    except (RuntimeError, ValueError) as exc:
+        raise ForecastError(str(exc)) from exc
 
 
 @app.post("/forecast", response_model=ForecastResponse)
