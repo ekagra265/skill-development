@@ -1,33 +1,31 @@
+"use client";
+
+import { useEffect, useState } from "react";
 import {
   TrendingUp,
   TrendingDown,
   Minus,
   Wheat,
-  Bean,
   Apple,
-  Leaf,
   Droplets,
-  Flower,
+  Leaf,
+  Loader2,
 } from "lucide-react";
-import type { CropOverview } from "@/lib/types";
+import { fetchMetadata } from "@/lib/api";
+
+interface CropPrice {
+  name: string;
+  price: number;
+  change: number;
+  trend: "up" | "down" | "flat";
+}
 
 const cropIcons: Record<string, React.ReactNode> = {
   Wheat: <Wheat className="h-5 w-5" />,
-  Rice: <Bean className="h-5 w-5" />,
   Tomato: <Apple className="h-5 w-5" />,
   Onion: <Droplets className="h-5 w-5" />,
-  Cotton: <Flower className="h-5 w-5" />,
-  Soybean: <Leaf className="h-5 w-5" />,
+  Potato: <Leaf className="h-5 w-5" />,
 };
-
-const sampleCrops: CropOverview[] = [
-  { name: "Wheat", icon: "Wheat", price: 2450, change: 3.2, trend: "up" },
-  { name: "Rice", icon: "Rice", price: 3180, change: -1.8, trend: "down" },
-  { name: "Tomato", icon: "Tomato", price: 1890, change: 8.5, trend: "up" },
-  { name: "Onion", icon: "Onion", price: 1620, change: -4.1, trend: "down" },
-  { name: "Cotton", icon: "Cotton", price: 6750, change: 1.2, trend: "up" },
-  { name: "Soybean", icon: "Soybean", price: 4320, change: 0.0, trend: "flat" },
-];
 
 function TrendBadge({ change, trend }: { change: number; trend: string }) {
   const color =
@@ -51,13 +49,13 @@ function TrendBadge({ change, trend }: { change: number; trend: string }) {
   );
 }
 
-function CropCard({ crop }: { crop: CropOverview }) {
+function CropCard({ crop }: { crop: CropPrice }) {
   return (
     <div className="group flex flex-col gap-3 rounded-xl border border-border bg-card p-5 shadow-sm transition-shadow hover:shadow-md">
       <div className="flex items-center justify-between">
         <div className="flex items-center gap-3">
           <div className="flex h-10 w-10 items-center justify-center rounded-lg bg-secondary text-primary">
-            {cropIcons[crop.icon] || <Leaf className="h-5 w-5" />}
+            {cropIcons[crop.name] || <Leaf className="h-5 w-5" />}
           </div>
           <div>
             <h3 className="text-sm font-semibold text-card-foreground">
@@ -70,7 +68,8 @@ function CropCard({ crop }: { crop: CropOverview }) {
       </div>
       <div className="flex items-baseline gap-1">
         <span className="text-2xl font-bold text-card-foreground">
-          {"\u20B9"}{crop.price.toLocaleString("en-IN")}
+          {"\u20B9"}
+          {crop.price.toLocaleString("en-IN")}
         </span>
         <span className="text-xs text-muted-foreground">/quintal</span>
       </div>
@@ -83,17 +82,53 @@ function CropCard({ crop }: { crop: CropOverview }) {
                 ? "bg-destructive"
                 : "bg-muted-foreground"
           }`}
-          style={{ width: `${Math.min(Math.abs(crop.change) * 10, 100)}%` }}
+          style={{
+            width: `${Math.min(Math.abs(crop.change) * 10, 100)}%`,
+          }}
         />
       </div>
       <p className="text-xs text-muted-foreground">
-        Weekly change vs. previous 7 days
+        Daily change vs. previous trading day
       </p>
     </div>
   );
 }
 
+function SkeletonCard() {
+  return (
+    <div className="flex flex-col gap-3 rounded-xl border border-border bg-card p-5 shadow-sm animate-pulse">
+      <div className="flex items-center justify-between">
+        <div className="flex items-center gap-3">
+          <div className="h-10 w-10 rounded-lg bg-muted" />
+          <div className="flex flex-col gap-1">
+            <div className="h-4 w-16 rounded bg-muted" />
+            <div className="h-3 w-20 rounded bg-muted" />
+          </div>
+        </div>
+        <div className="h-6 w-16 rounded-full bg-muted" />
+      </div>
+      <div className="h-7 w-28 rounded bg-muted" />
+      <div className="h-1 w-full rounded-full bg-muted" />
+      <div className="h-3 w-40 rounded bg-muted" />
+    </div>
+  );
+}
+
 export function MarketOverview() {
+  const [crops, setCrops] = useState<CropPrice[]>([]);
+  const [loading, setLoading] = useState(true);
+
+  useEffect(() => {
+    fetchMetadata()
+      .then((data) => {
+        setCrops(data.cropPrices);
+      })
+      .catch(() => {
+        setCrops([]);
+      })
+      .finally(() => setLoading(false));
+  }, []);
+
   return (
     <section id="dashboard" className="py-16 md:py-20">
       <div className="container">
@@ -106,14 +141,20 @@ export function MarketOverview() {
               Top Crop Prices Today
             </h2>
             <p className="mt-1 text-muted-foreground">
-              Real-time modal prices from mandis across India
+              Average modal prices computed from your dataset across all mandis
             </p>
           </div>
         </div>
-        <div className="grid gap-4 sm:grid-cols-2 lg:grid-cols-3">
-          {sampleCrops.map((crop) => (
-            <CropCard key={crop.name} crop={crop} />
-          ))}
+        <div className="grid gap-4 sm:grid-cols-2 lg:grid-cols-4">
+          {loading
+            ? Array.from({ length: 4 }).map((_, i) => <SkeletonCard key={i} />)
+            : crops.map((crop) => <CropCard key={crop.name} crop={crop} />)}
+          {!loading && crops.length === 0 && (
+            <div className="col-span-full flex items-center justify-center py-10 text-muted-foreground">
+              <Loader2 className="mr-2 h-4 w-4 animate-spin" />
+              Unable to load market data
+            </div>
+          )}
         </div>
       </div>
     </section>

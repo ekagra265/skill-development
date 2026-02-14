@@ -1,27 +1,48 @@
 import type { ForecastRequest, ForecastResponse, BestMandiResponse } from "./types";
 
-const API_BASE_URL =
-  process.env.NEXT_PUBLIC_API_BASE_URL || "http://127.0.0.1:8000";
-const API_KEY =
-  process.env.NEXT_PUBLIC_API_KEY || "agripulse-dev-key";
-
-const headers: HeadersInit = {
-  "Content-Type": "application/json",
-  "X-API-Key": API_KEY,
-};
+/** All requests now go to the local Next.js API routes that read the CSV dataset directly. */
 
 export async function fetchForecast(
   payload: ForecastRequest
 ): Promise<ForecastResponse> {
-  const res = await fetch(`${API_BASE_URL}/forecast`, {
+  const res = await fetch("/api/forecast", {
     method: "POST",
-    headers,
+    headers: { "Content-Type": "application/json" },
     body: JSON.stringify(payload),
   });
   if (!res.ok) {
-    const error = await res.json().catch(() => ({ detail: "Forecast request failed" }));
-    throw new Error(error.detail || `Request failed with status ${res.status}`);
+    const error = await res
+      .json()
+      .catch(() => ({ detail: "Forecast request failed" }));
+    throw new Error(
+      error.detail || `Request failed with status ${res.status}`
+    );
   }
+  return res.json();
+}
+
+export async function fetchMetadata(): Promise<{
+  states: string[];
+  commodities: string[];
+  cropPrices: {
+    name: string;
+    price: number;
+    change: number;
+    trend: "up" | "down" | "flat";
+  }[];
+}> {
+  const res = await fetch("/api/metadata");
+  if (!res.ok) throw new Error("Failed to load metadata");
+  return res.json();
+}
+
+export async function fetchMarketsForCommodity(
+  commodity: string
+): Promise<{ commodity: string; markets: string[] }> {
+  const res = await fetch(
+    `/api/metadata?commodity=${encodeURIComponent(commodity)}`
+  );
+  if (!res.ok) throw new Error("Failed to load markets");
   return res.json();
 }
 
@@ -37,16 +58,14 @@ export async function fetchBestMandi(
     days: String(days),
     limit: String(limit),
   });
-  const res = await fetch(`${API_BASE_URL}/best-mandi?${params}`, { headers });
+  const res = await fetch(`/api/best-mandi?${params}`);
   if (!res.ok) {
-    const error = await res.json().catch(() => ({ detail: "Best mandi request failed" }));
-    throw new Error(error.detail || `Request failed with status ${res.status}`);
+    const error = await res
+      .json()
+      .catch(() => ({ detail: "Best mandi request failed" }));
+    throw new Error(
+      error.detail || `Request failed with status ${res.status}`
+    );
   }
-  return res.json();
-}
-
-export async function checkHealth(): Promise<{ status: string; service: string }> {
-  const res = await fetch(`${API_BASE_URL}/health`);
-  if (!res.ok) throw new Error("Health check failed");
   return res.json();
 }

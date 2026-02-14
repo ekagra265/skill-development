@@ -1,35 +1,9 @@
 "use client";
 
-import { useState } from "react";
+import { useState, useEffect } from "react";
 import { Search, Loader2, MapPin, Wheat } from "lucide-react";
-import { fetchForecast } from "@/lib/api";
+import { fetchForecast, fetchMetadata, fetchMarketsForCommodity } from "@/lib/api";
 import type { ForecastResponse } from "@/lib/types";
-
-const cropOptions = [
-  "Wheat",
-  "Rice",
-  "Tomato",
-  "Onion",
-  "Potato",
-  "Cotton",
-  "Soybean",
-  "Maize",
-  "Gram",
-  "Mustard",
-];
-
-const mandiOptions = [
-  "Delhi Azadpur",
-  "Mumbai Vashi",
-  "Indore",
-  "Ludhiana",
-  "Jaipur",
-  "Lucknow",
-  "Ahmedabad",
-  "Hyderabad Gaddiannaram",
-  "Chennai Koyambedu",
-  "Kolkata",
-];
 
 interface ForecastSearchProps {
   onResult: (data: ForecastResponse) => void;
@@ -40,6 +14,43 @@ export function ForecastSearch({ onResult, onError }: ForecastSearchProps) {
   const [crop, setCrop] = useState("");
   const [mandi, setMandi] = useState("");
   const [loading, setLoading] = useState(false);
+
+  // Dynamic data from the real CSV dataset
+  const [commodities, setCommodities] = useState<string[]>([]);
+  const [markets, setMarkets] = useState<string[]>([]);
+  const [loadingMeta, setLoadingMeta] = useState(true);
+  const [loadingMarkets, setLoadingMarkets] = useState(false);
+
+  // Load commodities on mount
+  useEffect(() => {
+    fetchMetadata()
+      .then((data) => {
+        setCommodities(data.commodities);
+      })
+      .catch(() => {
+        setCommodities(["Wheat", "Tomato", "Potato", "Onion"]);
+      })
+      .finally(() => setLoadingMeta(false));
+  }, []);
+
+  // Load markets when a crop is selected
+  useEffect(() => {
+    if (!crop) {
+      setMarkets([]);
+      setMandi("");
+      return;
+    }
+    setLoadingMarkets(true);
+    setMandi("");
+    fetchMarketsForCommodity(crop)
+      .then((data) => {
+        setMarkets(data.markets);
+      })
+      .catch(() => {
+        setMarkets([]);
+      })
+      .finally(() => setLoadingMarkets(false));
+  }, [crop]);
 
   async function handleSubmit(e: React.FormEvent) {
     e.preventDefault();
@@ -52,7 +63,9 @@ export function ForecastSearch({ onResult, onError }: ForecastSearchProps) {
       const data = await fetchForecast({ crop, mandi });
       onResult(data);
     } catch (err) {
-      onError(err instanceof Error ? err.message : "Forecast failed. Please try again.");
+      onError(
+        err instanceof Error ? err.message : "Forecast failed. Please try again."
+      );
     } finally {
       setLoading(false);
     }
@@ -69,8 +82,8 @@ export function ForecastSearch({ onResult, onError }: ForecastSearchProps) {
             Predict Crop Prices
           </h2>
           <p className="mt-2 text-muted-foreground">
-            Select a crop and mandi to get AI-powered 7-day price forecast with
-            actionable recommendations.
+            Select a crop and mandi to get a 7-day price forecast with
+            actionable recommendations powered by your dataset.
           </p>
         </div>
 
@@ -79,7 +92,7 @@ export function ForecastSearch({ onResult, onError }: ForecastSearchProps) {
           className="mx-auto mt-10 flex max-w-2xl flex-col gap-4 rounded-2xl border border-border bg-card p-6 shadow-sm md:p-8"
         >
           <div className="grid gap-4 sm:grid-cols-2">
-            {/* Crop selector */}
+            {/* Crop selector -- populated from the real dataset */}
             <div className="flex flex-col gap-2">
               <label
                 htmlFor="crop-select"
@@ -92,11 +105,14 @@ export function ForecastSearch({ onResult, onError }: ForecastSearchProps) {
                 id="crop-select"
                 value={crop}
                 onChange={(e) => setCrop(e.target.value)}
-                className="rounded-lg border border-border bg-background px-3 py-2.5 text-sm text-foreground outline-none transition-colors focus:border-primary focus:ring-2 focus:ring-ring/20"
+                disabled={loadingMeta}
+                className="rounded-lg border border-border bg-background px-3 py-2.5 text-sm text-foreground outline-none transition-colors focus:border-primary focus:ring-2 focus:ring-ring/20 disabled:opacity-50"
                 required
               >
-                <option value="">Select a crop</option>
-                {cropOptions.map((c) => (
+                <option value="">
+                  {loadingMeta ? "Loading crops..." : "Select a crop"}
+                </option>
+                {commodities.map((c) => (
                   <option key={c} value={c}>
                     {c}
                   </option>
@@ -104,7 +120,7 @@ export function ForecastSearch({ onResult, onError }: ForecastSearchProps) {
               </select>
             </div>
 
-            {/* Mandi selector */}
+            {/* Mandi selector -- populated based on the selected crop */}
             <div className="flex flex-col gap-2">
               <label
                 htmlFor="mandi-select"
@@ -117,11 +133,18 @@ export function ForecastSearch({ onResult, onError }: ForecastSearchProps) {
                 id="mandi-select"
                 value={mandi}
                 onChange={(e) => setMandi(e.target.value)}
-                className="rounded-lg border border-border bg-background px-3 py-2.5 text-sm text-foreground outline-none transition-colors focus:border-primary focus:ring-2 focus:ring-ring/20"
+                disabled={!crop || loadingMarkets}
+                className="rounded-lg border border-border bg-background px-3 py-2.5 text-sm text-foreground outline-none transition-colors focus:border-primary focus:ring-2 focus:ring-ring/20 disabled:opacity-50"
                 required
               >
-                <option value="">Select a mandi</option>
-                {mandiOptions.map((m) => (
+                <option value="">
+                  {!crop
+                    ? "Select a crop first"
+                    : loadingMarkets
+                      ? "Loading mandis..."
+                      : `Select a mandi (${markets.length} available)`}
+                </option>
+                {markets.map((m) => (
                   <option key={m} value={m}>
                     {m}
                   </option>
@@ -138,7 +161,7 @@ export function ForecastSearch({ onResult, onError }: ForecastSearchProps) {
             {loading ? (
               <>
                 <Loader2 className="h-4 w-4 animate-spin" />
-                Running AI Forecast...
+                Running Forecast...
               </>
             ) : (
               <>
