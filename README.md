@@ -42,6 +42,11 @@ Frontend: `http://127.0.0.1:3000`
 
 By default the launcher runs frontend in `dev` mode for faster startup.
 Set `AGRIPULSE_FRONTEND_MODE=prod` in `.env.local` when you want production mode.
+If frontend is already running and you want fresh startup logs, run:
+
+```powershell
+.\run-frontend.cmd restart
+```
 
 ### Both (two terminals auto-opened)
 
