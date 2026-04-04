@@ -38,6 +38,7 @@ export interface ForecastResponse {
   current_price: number;
   trend_direction: "up" | "down" | "flat";
   expected_change_pct: number;
+  model_used?: "prophet" | "baseline";
   recommendation: RecommendationResult;
   volatility_level: "Low" | "Medium" | "High";
   shock_alert: string | null;

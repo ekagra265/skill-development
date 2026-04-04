@@ -125,6 +125,20 @@ export function ForecastDashboard({ data }: { data: ForecastResponse }) {
           <RecommendationCard recommendation={data.recommendation} />
         </div>
 
+        {data.model_used === "baseline" && (
+          <div className="mb-6 flex items-start gap-3 rounded-xl border border-warning/30 bg-warning/5 p-4">
+            <AlertTriangle className="mt-0.5 h-5 w-5 shrink-0 text-warning" />
+            <div>
+              <p className="text-sm font-semibold text-warning-foreground">
+                Limited History Mode
+              </p>
+              <p className="text-sm text-muted-foreground">
+                This forecast uses baseline estimates because mandi history is limited. Treat the recommendation conservatively.
+              </p>
+            </div>
+          </div>
+        )}
+
         {/* Stats grid */}
         <div className="grid gap-4 sm:grid-cols-2 lg:grid-cols-4">
           <StatCard

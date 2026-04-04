@@ -1,0 +1,16 @@
+.git
+.venv311
+node_modules
+.next
+.pnpm-store
+backend/logs
+backend/__pycache__
+backend/app/__pycache__
+backend/tests/__pycache__
+frontend/__pycache__
+**/__pycache__
+*.pyc
+*.pyo
+*.log
+*.out.log
+*.err.log

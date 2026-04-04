@@ -42,6 +42,7 @@ class ForecastResponse(BaseModel):
     current_price: float
     trend_direction: Literal["up", "down", "flat"]
     expected_change_pct: float
+    model_used: Literal["prophet", "baseline"] = "prophet"
     recommendation: RecommendationResult
     volatility_level: Literal["Low", "Medium", "High"]
     shock_alert: str | None

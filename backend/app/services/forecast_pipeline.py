@@ -21,6 +21,7 @@ class ForecastPipelineResult(TypedDict):
     current_price: float
     trend_direction: Literal["up", "down", "flat"]
     expected_change_pct: float
+    model_used: Literal["prophet", "baseline"]
     recommendation: dict
     volatility_level: Literal["Low", "Medium", "High"]
     shock_alert: str | None
@@ -117,6 +118,7 @@ def run_forecast_pipeline(payload: ForecastRequest) -> ForecastPipelineResult:
             "up" if expected_change > 0 else "down" if expected_change < 0 else "flat"
         ),
         "expected_change_pct": expected_change,
+        "model_used": "baseline" if using_baseline else "prophet",
         "recommendation": recommendation,
         "volatility_level": volatility_level,
         "shock_alert": shock_alert,

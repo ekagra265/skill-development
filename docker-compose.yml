@@ -1,0 +1,26 @@
+services:
+  backend:
+    build:
+      context: .
+      dockerfile: backend/Dockerfile
+    container_name: agripulse-backend
+    environment:
+      AGRIPULSE_API_KEY_ENABLED: "0"
+      AGRIPULSE_PRICE_SOURCE: "local_csv"
+    ports:
+      - "9877:9877"
+    volumes:
+      - ./data:/app/data
+
+  frontend:
+    build:
+      context: .
+      dockerfile: Dockerfile.frontend
+    container_name: agripulse-frontend
+    environment:
+      NEXT_PUBLIC_API_BASE_URL: "http://localhost:9877"
+      NEXT_PUBLIC_API_KEY: ""
+    ports:
+      - "3000:3000"
+    depends_on:
+      - backend
