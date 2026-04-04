@@ -95,6 +95,85 @@ def delete_report_by_id(report_id: str) -> bool:
     return True
 
 
+def _escape_pdf_text(value: str) -> str:
+    return (
+        str(value)
+        .replace("\\", "\\\\")
+        .replace("(", "\\(")
+        .replace(")", "\\)")
+        .replace("\r", " ")
+        .replace("\n", " ")
+    )
+
+
+def _generate_simple_pdf(lines: list[str]) -> bytes:
+    page_width = 595
+    page_height = 842
+    left = 40
+    top = 800
+    line_height = 14
+
+    commands = ["BT", "/F1 10 Tf", f"{left} {top} Td"]
+    for i, line in enumerate(lines):
+        if i > 0:
+            commands.append(f"0 -{line_height} Td")
+        commands.append(f"({_escape_pdf_text(line)}) Tj")
+    commands.append("ET")
+    stream = "\n".join(commands).encode("latin-1", errors="replace")
+
+    objects = [
+        b"1 0 obj << /Type /Catalog /Pages 2 0 R >> endobj\n",
+        b"2 0 obj << /Type /Pages /Count 1 /Kids [3 0 R] >> endobj\n",
+        (
+            f"3 0 obj << /Type /Page /Parent 2 0 R /MediaBox [0 0 {page_width} {page_height}] "
+            "/Resources << /Font << /F1 4 0 R >> >> /Contents 5 0 R >> endobj\n"
+        ).encode("ascii"),
+        b"4 0 obj << /Type /Font /Subtype /Type1 /BaseFont /Helvetica >> endobj\n",
+        (
+            f"5 0 obj << /Length {len(stream)} >> stream\n".encode("ascii")
+            + stream
+            + b"\nendstream\nendobj\n"
+        ),
+    ]
+
+    pdf = b"%PDF-1.4\n%\xe2\xe3\xcf\xd3\n"
+    offsets: list[int] = [0]
+    for obj in objects:
+        offsets.append(len(pdf))
+        pdf += obj
+
+    xref_pos = len(pdf)
+    pdf += f"xref\n0 {len(objects) + 1}\n".encode("ascii")
+    pdf += b"0000000000 65535 f \n"
+    for offset in offsets[1:]:
+        pdf += f"{offset:010d} 00000 n \n".encode("ascii")
+
+    pdf += (
+        f"trailer << /Size {len(objects) + 1} /Root 1 0 R >>\n"
+        f"startxref\n{xref_pos}\n%%EOF\n"
+    ).encode("ascii")
+    return pdf
+
+
+def _fallback_pdf(report: dict) -> bytes:
+    lines = [
+        "AGRIPULSE FORECAST REPORT",
+        f"Report ID: #{report.get('id', '')}",
+        f"Date: {report.get('date', '')} {report.get('time', '')}",
+        "-" * 56,
+        f"Crop            : {report.get('crop', '')}",
+        f"Mandi           : {report.get('mandi', '')}",
+        f"Current Price   : Rs. {report.get('current_price', 0):,}/q",
+        f"Expected Change : {report.get('predicted_change', 0)}%",
+        f"Confidence      : {report.get('confidence', 0)}%",
+        f"Recommendation  : {report.get('recommendation', '')}",
+        f"Risk Level      : {report.get('risk_level', '')}",
+        "-" * 56,
+        "INSIGHTS:",
+    ] + [f"- {item}" for item in report.get("insights", [])]
+    return _generate_simple_pdf(lines)
+
+
 def generate_pdf(report: dict) -> bytes:
     """
     Generate a PDF for the given report dict.
@@ -229,21 +308,6 @@ def generate_pdf(report: dict) -> bytes:
         doc.build(story)
         return buf.getvalue()
 
-    except ImportError:
-        # Fallback plain text if reportlab is not installed
-        lines = [
-            "AGRIPULSE FORECAST REPORT",
-            f"Report ID: #{report.get('id', '')}",
-            f"Date: {report.get('date', '')} {report.get('time', '')}",
-            "=" * 50,
-            f"Crop            : {report.get('crop', '')}",
-            f"Mandi           : {report.get('mandi', '')}",
-            f"Current Price   : Rs. {report.get('current_price', 0):,}/q",
-            f"Expected Change : {report.get('predicted_change', 0)}%",
-            f"Confidence      : {report.get('confidence', 0)}%",
-            f"Recommendation  : {report.get('recommendation', '')}",
-            f"Risk Level      : {report.get('risk_level', '')}",
-            "=" * 50,
-            "INSIGHTS:",
-        ] + [f"  - {i}" for i in report.get("insights", [])]
-        return "\n".join(lines).encode("utf-8")
+    except Exception:
+        # Keep downloads valid even when reportlab is unavailable or errors.
+        return _fallback_pdf(report)

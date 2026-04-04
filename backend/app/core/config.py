@@ -14,6 +14,10 @@ class Settings(BaseModel):
     app_name: str = "AgriPulse API"
     app_version: str = "0.1.0"
     default_language: str = "en"
+    api_key_enabled: bool = Field(
+        default_factory=lambda: os.getenv("AGRIPULSE_API_KEY_ENABLED", "0").strip().lower()
+        in {"1", "true", "yes", "on"}
+    )
     api_key_header: str = "X-API-Key"
     api_key: str = Field(
         default_factory=lambda: os.getenv("AGRIPULSE_API_KEY", "agripulse-dev-key")
@@ -56,8 +60,7 @@ class Settings(BaseModel):
     data_gov_api_key: str = Field(
         default_factory=lambda: os.getenv(
             "AGRIPULSE_DATA_GOV_API_KEY",
-            # Allow using the same key already configured for app auth.
-            os.getenv("AGRIPULSE_API_KEY", ""),
+            "",
         )
     )
     data_gov_page_size: int = Field(

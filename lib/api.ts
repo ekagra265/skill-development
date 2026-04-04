@@ -33,23 +33,19 @@ export type SavedReport = {
 };
 
 const RAW_API_BASE_URL = process.env.NEXT_PUBLIC_API_BASE_URL?.trim();
-const RAW_API_KEY = process.env.NEXT_PUBLIC_API_KEY?.trim();
+const RAW_API_KEY = process.env.NEXT_PUBLIC_API_KEY?.trim() ?? "";
 
 if (!RAW_API_BASE_URL) {
   throw new Error("Missing required environment variable: NEXT_PUBLIC_API_BASE_URL");
-}
-if (!RAW_API_KEY) {
-  throw new Error("Missing required environment variable: NEXT_PUBLIC_API_KEY");
 }
 
 const API_BASE_URL = RAW_API_BASE_URL.replace(/\/+$/, "");
 const API_KEY = RAW_API_KEY;
 
-const authHeaders: HeadersInit = { "X-API-Key": API_KEY };
-const jsonAuthHeaders: HeadersInit = {
-  "Content-Type": "application/json",
-  "X-API-Key": API_KEY,
-};
+const authHeaders: HeadersInit = API_KEY ? { "X-API-Key": API_KEY } : {};
+const jsonAuthHeaders: HeadersInit = API_KEY
+  ? { "Content-Type": "application/json", "X-API-Key": API_KEY }
+  : { "Content-Type": "application/json" };
 
 async function readError(res: Response, fallback: string): Promise<never> {
   const error = await res.json().catch(() => ({ detail: fallback }));
@@ -151,7 +147,9 @@ export async function fetchReportHistory(): Promise<{
 
 export function getReportDownloadUrl(reportId: string): string {
   const url = new URL(`${API_BASE_URL}/reports/download/${reportId}`);
-  url.searchParams.set("x_api_key", API_KEY);
+  if (API_KEY) {
+    url.searchParams.set("x_api_key", API_KEY);
+  }
   return url.toString();
 }
 

@@ -23,6 +23,9 @@ def require_api_key(
     x_api_key: str | None = Header(default=None, alias=settings.api_key_header),
     x_api_key_query: str | None = Query(default=None, alias="x_api_key"),
 ) -> None:
+    if not settings.api_key_enabled:
+        return
+
     token = x_api_key or x_api_key_query
     if not token or not secrets.compare_digest(token, settings.api_key):
         logger.warning("Unauthorized request blocked due to invalid API key.")

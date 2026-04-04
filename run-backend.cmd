@@ -13,7 +13,8 @@ set "UVICORN_RELOAD="
 
 if exist "%ENV_FILE%" (
   for /f "usebackq tokens=1,* delims==" %%A in ("%ENV_FILE%") do (
-    if /i "%%~A"=="NEXT_PUBLIC_API_KEY" set "AGRIPULSE_API_KEY=%%~B"
+    if /i "%%~A"=="AGRIPULSE_API_KEY_ENABLED" set "AGRIPULSE_API_KEY_ENABLED=%%~B"
+    if /i "%%~A"=="AGRIPULSE_API_KEY" set "AGRIPULSE_API_KEY=%%~B"
     if /i "%%~A"=="AGRIPULSE_PRICE_SOURCE" set "AGRIPULSE_PRICE_SOURCE=%%~B"
     if /i "%%~A"=="AGRIPULSE_DATA_GOV_API_KEY" set "AGRIPULSE_DATA_GOV_API_KEY=%%~B"
     if /i "%%~A"=="AGRIPULSE_DATA_GOV_RESOURCE_ID" set "AGRIPULSE_DATA_GOV_RESOURCE_ID=%%~B"
@@ -23,8 +24,9 @@ if exist "%ENV_FILE%" (
     if /i "%%~A"=="AGRIPULSE_DATA_GOV_TOTAL_TIMEOUT_SEC" set "AGRIPULSE_DATA_GOV_TOTAL_TIMEOUT_SEC=%%~B"
   )
 )
+if not defined AGRIPULSE_API_KEY_ENABLED set "AGRIPULSE_API_KEY_ENABLED=0"
 if not defined AGRIPULSE_PRICE_SOURCE set "AGRIPULSE_PRICE_SOURCE=local_csv"
-if not defined AGRIPULSE_DATA_GOV_API_KEY set "AGRIPULSE_DATA_GOV_API_KEY=%AGRIPULSE_API_KEY%"
+if not defined AGRIPULSE_DATA_GOV_API_KEY set "AGRIPULSE_DATA_GOV_API_KEY="
 if /i "%AGRIPULSE_BACKEND_RELOAD%"=="1" set "UVICORN_RELOAD=--reload"
 
 if not exist "%VENV_PYTHON%" (
