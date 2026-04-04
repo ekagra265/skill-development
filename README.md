@@ -39,6 +39,9 @@ run-frontend.cmd
 
 Frontend: `http://127.0.0.1:3000`
 
+By default the launcher runs frontend in production mode for faster/stable page loads.
+Set `AGRIPULSE_FRONTEND_MODE=dev` in `.env.local` only when doing active frontend development.
+
 ### Both (two terminals auto-opened)
 
 ```cmd
