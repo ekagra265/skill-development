@@ -26,6 +26,7 @@ from app.services.crop_prices import (
     get_unique_commodities,
     get_unique_states,
 )
+from app.services.report_storage import get_report_store_status
 
 # ── NEW: import reports router ─────────────────────────────────────────────────
 from app.routes.reports import router as reports_router
@@ -128,7 +129,14 @@ def root() -> RedirectResponse:
 
 @app.get("/health")
 def health() -> dict:
-    return {"status": "ok", "service": settings.app_name}
+    report_store = get_report_store_status()
+    return {
+        "status": "ok",
+        "service": settings.app_name,
+        "version": settings.app_version,
+        "price_source": settings.price_source,
+        "report_store": report_store,
+    }
 
 
 @app.get("/metadata")

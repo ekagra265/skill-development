@@ -13,7 +13,7 @@ AgriPulse is a crop-market intelligence app with:
 - Recommendation (`WAIT`, `SELL NOW`, `HOLD`) with confidence/risk
 - Volatility and shock alert output
 - Best mandi comparison endpoint
-- Saved report history + PDF download
+- Saved report history + PDF download (SQLite-backed persistence)
 - Baseline fallback model when data is limited (`model_used: baseline`)
 - Metadata endpoint cache (TTL) for better responsiveness
 
@@ -75,6 +75,7 @@ Important keys:
 - `AGRIPULSE_API_KEY_ENABLED` (`0` by default)
 - `AGRIPULSE_API_KEY`
 - `AGRIPULSE_PRICE_SOURCE` (`local_csv` recommended for local development)
+- `AGRIPULSE_REPORTS_DB_PATH` (optional custom SQLite path)
 
 ## Docker
 
@@ -114,7 +115,7 @@ pnpm lint
 ## Upgrade roadmap
 
 1. Replace in-memory metadata cache with Redis for multi-instance deployments.
-2. Move report storage from JSON file to PostgreSQL.
+2. Move report storage from SQLite to PostgreSQL.
 3. Add background jobs for scheduled forecast generation.
 4. Add authentication and per-user saved forecasts.
 5. Add CI workflow for backend tests + frontend type checks on every push.

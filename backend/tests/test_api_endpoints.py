@@ -118,6 +118,23 @@ class ApiEndpointIntegrationTests(unittest.TestCase):
         self.assertEqual(response.headers["content-type"], "application/pdf")
         self.assertTrue(response.content.startswith(b"%PDF-1.4"))
 
+    def test_health_endpoint(self) -> None:
+        with patch(
+            "app.main.get_report_store_status",
+            return_value={
+                "backend": "sqlite",
+                "path": "data/reports.db",
+                "total_reports": 0,
+            },
+        ):
+            response = self.client.get("/health")
+
+        self.assertEqual(response.status_code, 200)
+        payload = response.json()
+        self.assertEqual(payload["status"], "ok")
+        self.assertIn("report_store", payload)
+        self.assertEqual(payload["report_store"]["backend"], "sqlite")
+
 
 if __name__ == "__main__":
     unittest.main()

@@ -12,4 +12,7 @@ backend/logs/*.log
 *.out.log
 *.err.log
 data/reports.json
+data/reports.db
+data/reports.db-shm
+data/reports.db-wal
 run.txt

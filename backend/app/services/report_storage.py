@@ -1,98 +1,225 @@
 """
 Report storage service.
-Saves forecasts as JSON and generates PDF reports using reportlab.
-Reports are stored at: backend/data/reports.json
+Saves forecasts in SQLite and generates PDF reports using reportlab.
+Legacy JSON data (data/reports.json) is migrated automatically on first run.
 """
 from __future__ import annotations
 
 import json
 import os
+import sqlite3
 import uuid
 from datetime import datetime
+from pathlib import Path
+from threading import Lock
 from typing import Optional
 
-# Path: agripulse/backend/data/reports.json
-_HERE = os.path.dirname(os.path.abspath(__file__))
-REPORTS_FILE = os.path.normpath(os.path.join(_HERE, "..", "..", "..", "data", "reports.json"))
+_HERE = Path(__file__).resolve()
+_DATA_DIR = _HERE.parents[3] / "data"
+REPORTS_DB_PATH = Path(
+    os.getenv("AGRIPULSE_REPORTS_DB_PATH", str(_DATA_DIR / "reports.db"))
+).resolve()
+LEGACY_REPORTS_FILE = Path(
+    os.getenv("AGRIPULSE_REPORTS_JSON_PATH", str(_DATA_DIR / "reports.json"))
+).resolve()
+
+_MAX_REPORTS = 200
+_INIT_LOCK = Lock()
+_INITIALIZED = False
 
 
-def _ensure_dir() -> None:
-    os.makedirs(os.path.dirname(REPORTS_FILE), exist_ok=True)
+def _ensure_parent(path: Path) -> None:
+    path.parent.mkdir(parents=True, exist_ok=True)
 
 
-def _load() -> list:
-    _ensure_dir()
-    if not os.path.exists(REPORTS_FILE):
-        return []
+def _connect() -> sqlite3.Connection:
+    _ensure_parent(REPORTS_DB_PATH)
+    conn = sqlite3.connect(REPORTS_DB_PATH)
+    conn.row_factory = sqlite3.Row
+    return conn
+
+
+def _coerce_int(value: object, default: int = 0) -> int:
     try:
-        with open(REPORTS_FILE, "r", encoding="utf-8") as f:
-            return json.load(f)
-    except Exception:
-        return []
+        return int(value)  # type: ignore[arg-type]
+    except (TypeError, ValueError):
+        return default
 
 
-def _dump(reports: list) -> None:
-    _ensure_dir()
-    with open(REPORTS_FILE, "w", encoding="utf-8") as f:
-        json.dump(reports, f, indent=2, ensure_ascii=False)
+def _coerce_float(value: object, default: float = 0.0) -> float:
+    try:
+        return float(value)  # type: ignore[arg-type]
+    except (TypeError, ValueError):
+        return default
 
 
-def save_report(data: dict) -> str:
-    """
-    Save a ForecastResponse dict as a report.
-    data matches your ForecastResponse schema from schemas.py.
-    Returns the new report ID.
-    """
-    reports = _load()
-    report_id = str(uuid.uuid4())[:8]
-
-    # Safely extract nested recommendation block (matches RecommendationResult)
+def _build_report(data: dict, report_id: str) -> dict:
     rec = data.get("recommendation") or {}
-
-    report = {
+    now = datetime.now()
+    return {
         "id": report_id,
-        "crop": data.get("crop", ""),
-        "mandi": data.get("mandi", ""),
-        "date": datetime.now().strftime("%Y-%m-%d"),
-        "time": datetime.now().strftime("%H:%M"),
-        # From recommendation block
-        "recommendation": rec.get("action", ""),
-        "recommendation_message": rec.get("message", ""),
-        "confidence": rec.get("confidence", 0),
-        "risk_level": rec.get("risk_level", ""),
-        # Price fields from ForecastResponse
-        "current_price": data.get("current_price", 0),
-        "predicted_change": round(float(data.get("expected_change_pct", 0)), 2),
-        "trend_direction": data.get("trend_direction", ""),
-        "volatility_level": data.get("volatility_level", ""),
+        "crop": str(data.get("crop", "")),
+        "mandi": str(data.get("mandi", "")),
+        "date": now.strftime("%Y-%m-%d"),
+        "time": now.strftime("%H:%M"),
+        "recommendation": str(rec.get("action", "")),
+        "recommendation_message": str(rec.get("message", "")),
+        "confidence": _coerce_int(rec.get("confidence"), 0),
+        "risk_level": str(rec.get("risk_level", "")),
+        "current_price": _coerce_float(data.get("current_price"), 0.0),
+        "predicted_change": round(_coerce_float(data.get("expected_change_pct"), 0.0), 2),
+        "trend_direction": str(data.get("trend_direction", "")),
+        "volatility_level": str(data.get("volatility_level", "")),
         "shock_alert": data.get("shock_alert"),
         "insights": data.get("insights", []),
         "forecast": data.get("forecast", []),
         "nearby_mandis": data.get("nearby_mandis", []),
-        "language": data.get("language", "en"),
+        "language": str(data.get("language", "en")),
     }
 
-    reports.insert(0, report)   # newest first
-    reports = reports[:200]     # cap at 200
-    _dump(reports)
+
+def _parse_created_at(report: dict) -> str:
+    date_value = str(report.get("date", "")).strip()
+    time_value = str(report.get("time", "")).strip() or "00:00"
+    if date_value:
+        for fmt in ("%Y-%m-%d %H:%M", "%Y-%m-%d %H:%M:%S"):
+            try:
+                return datetime.strptime(f"{date_value} {time_value}", fmt).isoformat()
+            except ValueError:
+                continue
+    return datetime.now().isoformat()
+
+
+def _load_legacy_reports() -> list[dict]:
+    if not LEGACY_REPORTS_FILE.exists():
+        return []
+    try:
+        payload = json.loads(LEGACY_REPORTS_FILE.read_text(encoding="utf-8"))
+        if isinstance(payload, list):
+            return [item for item in payload if isinstance(item, dict)]
+    except Exception:
+        pass
+    return []
+
+
+def _initialize() -> None:
+    global _INITIALIZED
+    if _INITIALIZED:
+        return
+
+    with _INIT_LOCK:
+        if _INITIALIZED:
+            return
+
+        with _connect() as conn:
+            conn.execute(
+                """
+                CREATE TABLE IF NOT EXISTS reports (
+                    id TEXT PRIMARY KEY,
+                    created_at TEXT NOT NULL,
+                    payload TEXT NOT NULL
+                )
+                """
+            )
+            conn.execute(
+                "CREATE INDEX IF NOT EXISTS idx_reports_created_at ON reports(created_at DESC)"
+            )
+
+            existing_count = conn.execute("SELECT COUNT(*) FROM reports").fetchone()[0]
+            if not existing_count:
+                for raw in _load_legacy_reports():
+                    legacy_id = str(raw.get("id") or uuid.uuid4())[:8]
+                    conn.execute(
+                        """
+                        INSERT OR REPLACE INTO reports(id, created_at, payload)
+                        VALUES (?, ?, ?)
+                        """,
+                        (legacy_id, _parse_created_at(raw), json.dumps(raw, ensure_ascii=False)),
+                    )
+            conn.commit()
+
+        _INITIALIZED = True
+
+
+def save_report(data: dict) -> str:
+    """
+    Save a ForecastResponse dict as a report and return the new report ID.
+    """
+    _initialize()
+    report_id = str(uuid.uuid4())[:8]
+    report = _build_report(data, report_id)
+
+    with _connect() as conn:
+        conn.execute(
+            """
+            INSERT INTO reports(id, created_at, payload)
+            VALUES (?, ?, ?)
+            """,
+            (report_id, datetime.now().isoformat(), json.dumps(report, ensure_ascii=False)),
+        )
+        conn.execute(
+            """
+            DELETE FROM reports
+            WHERE id IN (
+                SELECT id
+                FROM reports
+                ORDER BY created_at DESC
+                LIMIT -1 OFFSET ?
+            )
+            """,
+            (_MAX_REPORTS,),
+        )
+        conn.commit()
     return report_id
 
 
 def get_all_reports() -> list:
-    return _load()
+    _initialize()
+    with _connect() as conn:
+        rows = conn.execute(
+            "SELECT payload FROM reports ORDER BY created_at DESC"
+        ).fetchall()
+    reports: list[dict] = []
+    for row in rows:
+        try:
+            reports.append(json.loads(row["payload"]))
+        except (TypeError, ValueError, json.JSONDecodeError):
+            continue
+    return reports
 
 
 def get_report_by_id(report_id: str) -> Optional[dict]:
-    return next((r for r in _load() if r["id"] == report_id), None)
+    _initialize()
+    with _connect() as conn:
+        row = conn.execute(
+            "SELECT payload FROM reports WHERE id = ?",
+            (report_id,),
+        ).fetchone()
+    if row is None:
+        return None
+    try:
+        return json.loads(row["payload"])
+    except (TypeError, ValueError, json.JSONDecodeError):
+        return None
 
 
 def delete_report_by_id(report_id: str) -> bool:
-    reports = _load()
-    updated = [r for r in reports if r["id"] != report_id]
-    if len(updated) == len(reports):
-        return False
-    _dump(updated)
-    return True
+    _initialize()
+    with _connect() as conn:
+        cursor = conn.execute("DELETE FROM reports WHERE id = ?", (report_id,))
+        conn.commit()
+    return cursor.rowcount > 0
+
+
+def get_report_store_status() -> dict:
+    _initialize()
+    with _connect() as conn:
+        total = conn.execute("SELECT COUNT(*) FROM reports").fetchone()[0]
+    return {
+        "backend": "sqlite",
+        "path": str(REPORTS_DB_PATH),
+        "total_reports": int(total),
+    }
 
 
 def _escape_pdf_text(value: str) -> str:
