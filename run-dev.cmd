@@ -32,7 +32,5 @@ echo Backend : http://127.0.0.1:9877/docs
 echo Frontend: http://127.0.0.1:3000
 echo.
 echo Close each terminal window to stop that service.
-start "" "http://127.0.0.1:9877/docs"
-start "" "http://127.0.0.1:3000"
 
 exit /b 0

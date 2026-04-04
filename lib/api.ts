@@ -34,6 +34,13 @@ export type SavedReport = {
 
 const RAW_API_BASE_URL = process.env.NEXT_PUBLIC_API_BASE_URL?.trim();
 const RAW_API_KEY = process.env.NEXT_PUBLIC_API_KEY?.trim() ?? "";
+const METADATA_CACHE_TTL_MS = 15_000;
+const METADATA_TIMEOUT_MS = 8_000;
+const FORECAST_TIMEOUT_MS = 30_000;
+const DEFAULT_TIMEOUT_MS = 12_000;
+
+const metadataCache = new Map<string, { ts: number; data: MetadataResponse }>();
+const metadataInflight = new Map<string, Promise<MetadataResponse>>();
 
 if (!RAW_API_BASE_URL) {
   throw new Error("Missing required environment variable: NEXT_PUBLIC_API_BASE_URL");
@@ -52,14 +59,41 @@ async function readError(res: Response, fallback: string): Promise<never> {
   throw new Error(error.detail || `Request failed with status ${res.status}`);
 }
 
+async function fetchWithTimeout(
+  input: string,
+  init: RequestInit,
+  timeoutMs = DEFAULT_TIMEOUT_MS
+): Promise<Response> {
+  const controller = new AbortController();
+  const timeoutHandle = setTimeout(() => controller.abort(), timeoutMs);
+
+  try {
+    return await fetch(input, {
+      ...init,
+      signal: controller.signal,
+    });
+  } catch (error) {
+    if (error instanceof Error && error.name === "AbortError") {
+      throw new Error(`Request timed out after ${Math.round(timeoutMs / 1000)}s`);
+    }
+    throw error;
+  } finally {
+    clearTimeout(timeoutHandle);
+  }
+}
+
 export async function fetchForecast(
   payload: ForecastRequest
 ): Promise<ForecastResponse> {
-  const res = await fetch(`${API_BASE_URL}/forecast`, {
-    method: "POST",
-    headers: jsonAuthHeaders,
-    body: JSON.stringify(payload),
-  });
+  const res = await fetchWithTimeout(
+    `${API_BASE_URL}/forecast`,
+    {
+      method: "POST",
+      headers: jsonAuthHeaders,
+      body: JSON.stringify(payload),
+    },
+    FORECAST_TIMEOUT_MS
+  );
   if (!res.ok) {
     return readError(res, "Forecast request failed");
   }
@@ -72,22 +106,46 @@ export async function fetchMetadata(topCrops?: number): Promise<MetadataResponse
     query.set("top_crops", String(Math.trunc(topCrops)));
   }
   const path = query.toString() ? `/metadata?${query}` : "/metadata";
-
-  const res = await fetch(`${API_BASE_URL}${path}`, {
-    headers: authHeaders,
-  });
-  if (!res.ok) {
-    return readError(res, "Metadata request failed");
+  const cacheKey = path;
+  const cached = metadataCache.get(cacheKey);
+  if (cached && Date.now() - cached.ts < METADATA_CACHE_TTL_MS) {
+    return cached.data;
   }
-  return res.json();
+
+  const inflight = metadataInflight.get(cacheKey);
+  if (inflight) {
+    return inflight;
+  }
+
+  const request = (async () => {
+    const res = await fetchWithTimeout(
+      `${API_BASE_URL}${path}`,
+      { headers: authHeaders },
+      METADATA_TIMEOUT_MS
+    );
+    if (!res.ok) {
+      return readError(res, "Metadata request failed");
+    }
+    const data = (await res.json()) as MetadataResponse;
+    metadataCache.set(cacheKey, { ts: Date.now(), data });
+    return data;
+  })();
+
+  metadataInflight.set(cacheKey, request);
+  try {
+    return await request;
+  } finally {
+    metadataInflight.delete(cacheKey);
+  }
 }
 
 export async function fetchMarketsForCommodity(
   commodity: string
 ): Promise<{ commodity: string; markets: string[] }> {
-  const res = await fetch(
+  const res = await fetchWithTimeout(
     `${API_BASE_URL}/metadata?commodity=${encodeURIComponent(commodity)}`,
-    { headers: authHeaders }
+    { headers: authHeaders },
+    METADATA_TIMEOUT_MS
   );
   if (!res.ok) {
     return readError(res, "Markets request failed");
@@ -107,9 +165,11 @@ export async function fetchBestMandi(
     days: String(days),
     limit: String(limit),
   });
-  const res = await fetch(`${API_BASE_URL}/best-mandi?${params}`, {
-    headers: authHeaders,
-  });
+  const res = await fetchWithTimeout(
+    `${API_BASE_URL}/best-mandi?${params}`,
+    { headers: authHeaders },
+    DEFAULT_TIMEOUT_MS
+  );
   if (!res.ok) {
     return readError(res, "Best mandi request failed");
   }
@@ -121,11 +181,15 @@ export async function fetchBestMandi(
 export async function saveReport(
   forecastData: ForecastResponse
 ): Promise<{ success: boolean; report_id: string }> {
-  const res = await fetch(`${API_BASE_URL}/reports/save`, {
-    method: "POST",
-    headers: jsonAuthHeaders,
-    body: JSON.stringify(forecastData),
-  });
+  const res = await fetchWithTimeout(
+    `${API_BASE_URL}/reports/save`,
+    {
+      method: "POST",
+      headers: jsonAuthHeaders,
+      body: JSON.stringify(forecastData),
+    },
+    DEFAULT_TIMEOUT_MS
+  );
   if (!res.ok) {
     return readError(res, "Failed to save report");
   }
@@ -136,9 +200,11 @@ export async function fetchReportHistory(): Promise<{
   reports: SavedReport[];
   total: number;
 }> {
-  const res = await fetch(`${API_BASE_URL}/reports/history`, {
-    headers: authHeaders,
-  });
+  const res = await fetchWithTimeout(
+    `${API_BASE_URL}/reports/history`,
+    { headers: authHeaders },
+    DEFAULT_TIMEOUT_MS
+  );
   if (!res.ok) {
     return readError(res, "Failed to fetch report history");
   }
@@ -154,10 +220,14 @@ export function getReportDownloadUrl(reportId: string): string {
 }
 
 export async function deleteReport(reportId: string): Promise<void> {
-  const res = await fetch(`${API_BASE_URL}/reports/${reportId}`, {
-    method: "DELETE",
-    headers: authHeaders,
-  });
+  const res = await fetchWithTimeout(
+    `${API_BASE_URL}/reports/${reportId}`,
+    {
+      method: "DELETE",
+      headers: authHeaders,
+    },
+    DEFAULT_TIMEOUT_MS
+  );
   if (!res.ok) {
     return readError(res, "Failed to delete report");
   }

@@ -10,6 +10,8 @@ set "ENV_FILE=%ROOT%\.env.local"
 set "UVICORN_RELOAD="
 if not defined BACKEND_HOST set "BACKEND_HOST=127.0.0.1"
 if not defined BACKEND_PORT set "BACKEND_PORT=9877"
+set "BACKEND_DOCS_URL=http://%BACKEND_HOST%:%BACKEND_PORT%/docs"
+set "BACKEND_HEALTH_URL=http://%BACKEND_HOST%:%BACKEND_PORT%/health"
 
 if exist "%ENV_FILE%" (
   for /f "usebackq tokens=1,* delims==" %%A in ("%ENV_FILE%") do (
@@ -48,17 +50,25 @@ for /f "tokens=2,5" %%A in ('netstat -ano ^| findstr LISTENING ^| findstr /C:":%
 )
 
 if defined BACKEND_PORT_PID (
-  echo [INFO] Port %BACKEND_PORT% is already in use by PID %BACKEND_PORT_PID%.
-  echo If AgriPulse backend is already running, open:
-  echo   http://%BACKEND_HOST%:%BACKEND_PORT%/docs
-  echo.
-  echo To free the port, run:
-  echo   taskkill /PID %BACKEND_PORT_PID% /F
-  exit /b 0
+  curl.exe -s --max-time 4 "%BACKEND_HEALTH_URL%" >nul 2>nul
+  if %ERRORLEVEL% EQU 0 (
+    echo [INFO] Backend already running on %BACKEND_DOCS_URL% with PID %BACKEND_PORT_PID%.
+    exit /b 0
+  )
+  echo [WARN] Port %BACKEND_PORT% is occupied by unresponsive PID %BACKEND_PORT_PID%.
+  echo Attempting automatic restart...
+  taskkill /PID %BACKEND_PORT_PID% /F >nul 2>nul
+  if %ERRORLEVEL% NEQ 0 (
+    echo [ERROR] Could not stop PID %BACKEND_PORT_PID%.
+    echo Run this manually, then retry:
+    echo   taskkill /PID %BACKEND_PORT_PID% /F
+    exit /b 1
+  )
+  ping -n 2 127.0.0.1 >nul
 )
 
 pushd "%BACKEND_DIR%" || exit /b 1
-echo Starting AgriPulse backend at http://%BACKEND_HOST%:%BACKEND_PORT%
+echo Starting AgriPulse backend at %BACKEND_DOCS_URL%
 "%VENV_PYTHON%" -m uvicorn app.main:app %UVICORN_RELOAD% --host %BACKEND_HOST% --port %BACKEND_PORT%
 set "EXIT_CODE=%ERRORLEVEL%"
 popd

@@ -17,6 +17,7 @@ if exist "%ENV_FILE%" (
 if not defined NEXT_PUBLIC_API_BASE_URL set "NEXT_PUBLIC_API_BASE_URL=%DEFAULT_API_BASE_URL%"
 if not defined HOSTNAME set "HOSTNAME=127.0.0.1"
 if not defined PORT set "PORT=3000"
+set "FRONTEND_URL=http://%HOSTNAME%:%PORT%"
 
 if not exist "%ROOT%\package.json" (
   echo [ERROR] package.json not found in "%ROOT%"
@@ -38,19 +39,33 @@ for /f "tokens=2,5" %%A in ('netstat -ano ^| findstr LISTENING ^| findstr /C:":%
 )
 
 if defined FRONTEND_PORT_PID (
-  echo [INFO] Port %PORT% is already in use by PID %FRONTEND_PORT_PID%.
-  echo If AgriPulse frontend is already running, open:
-  echo   http://%HOSTNAME%:%PORT%
-  echo.
-  echo To free the port, run:
-  echo   taskkill /PID %FRONTEND_PORT_PID% /F
-  exit /b 0
+  curl.exe -s -I --max-time 4 "%FRONTEND_URL%" >nul 2>nul
+  if %ERRORLEVEL% EQU 0 (
+    echo [INFO] Frontend already running on %FRONTEND_URL% with PID %FRONTEND_PORT_PID%.
+    exit /b 0
+  )
+  echo [WARN] Port %PORT% is occupied by unresponsive PID %FRONTEND_PORT_PID%.
+  echo Attempting automatic restart...
+  taskkill /PID %FRONTEND_PORT_PID% /F >nul 2>nul
+  if %ERRORLEVEL% NEQ 0 (
+    echo [ERROR] Could not stop PID %FRONTEND_PORT_PID%.
+    echo Run this manually, then retry:
+    echo   taskkill /PID %FRONTEND_PORT_PID% /F
+    exit /b 1
+  )
+  ping -n 2 127.0.0.1 >nul
+)
+
+echo %NEXT_PUBLIC_API_BASE_URL% | findstr /I "localhost" >nul
+if %ERRORLEVEL% EQU 0 (
+  echo [WARN] NEXT_PUBLIC_API_BASE_URL uses localhost.
+  echo        For faster local calls, prefer: http://127.0.0.1:9877
 )
 
 where pnpm.cmd >nul 2>nul
 if %ERRORLEVEL% EQU 0 (
   pushd "%ROOT%" || exit /b 1
-  echo Starting AgriPulse frontend with pnpm at http://%HOSTNAME%:%PORT%
+  echo Starting AgriPulse frontend with pnpm at %FRONTEND_URL%
   echo Using NEXT_PUBLIC_API_BASE_URL=%NEXT_PUBLIC_API_BASE_URL%
   pnpm.cmd dev --hostname %HOSTNAME% --port %PORT%
   set "EXIT_CODE=%ERRORLEVEL%"
@@ -61,7 +76,7 @@ if %ERRORLEVEL% EQU 0 (
 where npm.cmd >nul 2>nul
 if %ERRORLEVEL% EQU 0 (
   pushd "%ROOT%" || exit /b 1
-  echo Starting AgriPulse frontend with npm at http://%HOSTNAME%:%PORT%
+  echo Starting AgriPulse frontend with npm at %FRONTEND_URL%
   echo Using NEXT_PUBLIC_API_BASE_URL=%NEXT_PUBLIC_API_BASE_URL%
   npm.cmd run dev -- --hostname %HOSTNAME% --port %PORT%
   set "EXIT_CODE=%ERRORLEVEL%"

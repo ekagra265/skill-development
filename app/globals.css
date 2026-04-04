@@ -1,5 +1,4 @@
 @import "tailwindcss";
-@import url("https://fonts.googleapis.com/css2?family=Sora:wght@300;400;500;600;700;800&family=DM+Sans:ital,opsz,wght@0,9..40,300;0,9..40,400;0,9..40,500;0,9..40,600;1,9..40,400&family=Noto+Sans+Devanagari:wght@400;500;600;700&display=swap");
 
 @theme inline {
   --color-background: #f5f7f5;
@@ -35,9 +34,9 @@
 
   --radius: 0.875rem;
 
-  --font-sans: "DM Sans", ui-sans-serif, system-ui, sans-serif;
-  --font-display: "Sora", ui-sans-serif, system-ui, sans-serif;
-  --font-devanagari: "Noto Sans Devanagari", sans-serif;
+  --font-sans: var(--font-dm-sans), ui-sans-serif, system-ui, sans-serif;
+  --font-display: var(--font-sora), ui-sans-serif, system-ui, sans-serif;
+  --font-devanagari: var(--font-noto-devanagari), sans-serif;
 
   --hero-dark-1: #071510;
   --hero-dark-2: #0a1e13;
