@@ -1,16 +1,17 @@
-"use client";
+﻿"use client";
 
 import {
-  LineChart,
+  ResponsiveContainer,
+  ComposedChart,
+  Area,
   Line,
   XAxis,
   YAxis,
   CartesianGrid,
   Tooltip,
-  ResponsiveContainer,
-  Area,
-  AreaChart,
 } from "recharts";
+import { useLang } from "@/lib/lang-context";
+import { t } from "@/lib/types";
 import type { ForecastPoint } from "@/lib/types";
 
 interface ForecastChartProps {
@@ -23,158 +24,160 @@ function formatDate(dateStr: string) {
   return d.toLocaleDateString("en-IN", { day: "numeric", month: "short" });
 }
 
+type TooltipEntry = {
+  dataKey: string;
+  color: string;
+  value: number;
+};
+
 function CustomTooltip({
   active,
   payload,
   label,
 }: {
   active?: boolean;
-  payload?: Array<{ value: number; dataKey: string; color: string }>;
+  payload?: TooltipEntry[];
   label?: string;
 }) {
+  const { lang, isHindi } = useLang();
   if (!active || !payload?.length || !label) return null;
 
+  const getValue = (key: string) => payload.find((p) => p.dataKey === key)?.value;
+  const predicted = getValue("yhat");
+  const upper = getValue("yhat_upper");
+  const lower = getValue("yhat_lower");
+
   return (
-    <div className="rounded-lg border border-border bg-card p-3 shadow-lg">
-      <p className="mb-1.5 text-xs font-medium text-muted-foreground">
-        {formatDate(label)}
-      </p>
-      {payload.map((item) => (
-        <div key={item.dataKey} className="flex items-center gap-2 text-sm">
-          <span
-            className="h-2 w-2 rounded-full"
-            style={{ backgroundColor: item.color }}
-          />
-          <span className="text-muted-foreground">
-            {item.dataKey === "yhat"
-              ? "Predicted"
-              : item.dataKey === "yhat_upper"
-                ? "Upper"
-                : "Lower"}
-            :
+    <div className="rounded-xl border border-border bg-card p-3 shadow-card-hover">
+      <p className="mb-2 text-xs font-semibold text-muted-foreground">{formatDate(label)}</p>
+      {predicted !== undefined && (
+        <div className="flex items-center gap-2 text-sm">
+          <span className="h-2 w-2 rounded-full bg-primary" />
+          <span className={`text-muted-foreground ${isHindi ? "font-devanagari" : ""}`}>
+            {t(lang, "chart_predicted")}:
           </span>
-          <span className="font-semibold text-card-foreground">
-            {"\u20B9"}{item.value.toFixed(0)}
-          </span>
+          <span className="font-bold text-card-foreground">₹{predicted.toFixed(0)}</span>
         </div>
-      ))}
+      )}
+      {upper !== undefined && lower !== undefined && (
+        <div className="mt-1 flex items-center gap-2 text-sm">
+          <span className="h-2 w-2 rounded-full bg-sky-400" />
+          <span className={`text-muted-foreground ${isHindi ? "font-devanagari" : ""}`}>
+            {t(lang, "chart_confidence_band")}:
+          </span>
+          <span className="font-bold text-card-foreground">₹{lower.toFixed(0)} - ₹{upper.toFixed(0)}</span>
+        </div>
+      )}
     </div>
   );
 }
 
 export function ForecastChart({ forecast, cropName }: ForecastChartProps) {
+  const { lang, isHindi } = useLang();
+
   const chartData = forecast.map((p) => ({
     ...p,
-    dateLabel: formatDate(p.ds),
+    bandBase: p.yhat_lower,
+    bandRange: p.yhat_upper - p.yhat_lower,
   }));
 
-  // Compute JS colors for Recharts (CSS vars don't work)
-  const primaryColor = "#16803c";
-  const accentColor = "#1a73e8";
-  const mutedColor = "#dce5df";
+  const yValues = forecast.flatMap((p) => [p.yhat, p.yhat_lower, p.yhat_upper]);
+  const yMin = Math.floor(Math.min(...yValues) * 0.97);
+  const yMax = Math.ceil(Math.max(...yValues) * 1.03);
 
   return (
     <section className="pb-8">
       <div className="container">
-        <div className="rounded-xl border border-border bg-card p-6 shadow-sm">
+        <div className="rounded-2xl border border-border bg-card p-6 shadow-card">
           <div className="mb-6 flex flex-col gap-1">
-            <h3 className="text-lg font-bold text-card-foreground">
-              7-Day Price Forecast
+            <h3 className={`text-lg font-display font-bold text-card-foreground ${isHindi ? "font-devanagari" : ""}`}>
+              {t(lang, "chart_title")}
             </h3>
-            <p className="text-sm text-muted-foreground">
-              Predicted prices for {cropName} with confidence bands
+            <p className={`text-sm text-muted-foreground ${isHindi ? "font-devanagari" : ""}`}>
+              {t(lang, "chart_subtitle", cropName)}
             </p>
           </div>
 
           <div className="h-72 w-full md:h-80">
             <ResponsiveContainer width="100%" height="100%">
-              <AreaChart
-                data={chartData}
-                margin={{ top: 10, right: 10, left: 10, bottom: 0 }}
-              >
+              <ComposedChart data={chartData} margin={{ top: 8, right: 10, left: 4, bottom: 0 }}>
                 <defs>
-                  <linearGradient id="bandFill" x1="0" y1="0" x2="0" y2="1">
-                    <stop offset="0%" stopColor={primaryColor} stopOpacity={0.15} />
-                    <stop offset="100%" stopColor={primaryColor} stopOpacity={0.02} />
+                  <linearGradient id="confidenceBandSky" x1="0" y1="0" x2="0" y2="1">
+                    <stop offset="0%" stopColor="#7dd3fc" stopOpacity={0.45} />
+                    <stop offset="100%" stopColor="#bae6fd" stopOpacity={0.08} />
+                  </linearGradient>
+                  <linearGradient id="predictionLine" x1="0" y1="0" x2="1" y2="0">
+                    <stop offset="0%" stopColor="#16a34a" />
+                    <stop offset="100%" stopColor="#2563eb" />
                   </linearGradient>
                 </defs>
-                <CartesianGrid
-                  strokeDasharray="3 3"
-                  stroke={mutedColor}
-                  vertical={false}
-                />
+
+                <CartesianGrid strokeDasharray="3 3" stroke="#d4e2d9" vertical={false} />
                 <XAxis
                   dataKey="ds"
                   tickFormatter={formatDate}
-                  tick={{ fontSize: 12, fill: "#5a6e60" }}
+                  tick={{ fontSize: 11, fill: "#5f7065" }}
                   axisLine={false}
                   tickLine={false}
                 />
                 <YAxis
-                  tick={{ fontSize: 12, fill: "#5a6e60" }}
+                  domain={[yMin, yMax]}
+                  tick={{ fontSize: 11, fill: "#5f7065" }}
                   axisLine={false}
                   tickLine={false}
-                  tickFormatter={(v: number) => `\u20B9${v}`}
+                  tickFormatter={(v: number) => `₹${v}`}
+                  width={72}
                 />
-                <Tooltip
-                  content={<CustomTooltip />}
-                />
+
+                <Tooltip content={<CustomTooltip />} />
+
+                <Area dataKey="bandBase" stackId="band" stroke="none" fill="transparent" />
                 <Area
-                  type="monotone"
-                  dataKey="yhat_upper"
-                  stroke="transparent"
-                  fill="url(#bandFill)"
-                  fillOpacity={1}
+                  dataKey="bandRange"
+                  stackId="band"
+                  stroke="none"
+                  fill="url(#confidenceBandSky)"
                 />
-                <Area
-                  type="monotone"
-                  dataKey="yhat_lower"
-                  stroke="transparent"
-                  fill="#ffffff"
-                  fillOpacity={0.8}
-                />
+
                 <Line
                   type="monotone"
                   dataKey="yhat"
-                  stroke={primaryColor}
-                  strokeWidth={2.5}
-                  dot={{ r: 4, fill: "#ffffff", stroke: primaryColor, strokeWidth: 2 }}
-                  activeDot={{ r: 6, fill: primaryColor }}
+                  stroke="url(#predictionLine)"
+                  strokeWidth={3}
+                  dot={{ r: 3.6, fill: "#ffffff", stroke: "#1a7a3f", strokeWidth: 2 }}
+                  activeDot={{ r: 5.5, fill: "#1a7a3f" }}
                 />
                 <Line
                   type="monotone"
                   dataKey="yhat_upper"
-                  stroke={accentColor}
-                  strokeWidth={1}
-                  strokeDasharray="4 4"
+                  stroke="#60a5fa"
+                  strokeWidth={1.2}
+                  strokeDasharray="5 5"
                   dot={false}
                 />
                 <Line
                   type="monotone"
                   dataKey="yhat_lower"
-                  stroke={accentColor}
-                  strokeWidth={1}
-                  strokeDasharray="4 4"
+                  stroke="#60a5fa"
+                  strokeWidth={1.2}
+                  strokeDasharray="5 5"
                   dot={false}
                 />
-              </AreaChart>
+              </ComposedChart>
             </ResponsiveContainer>
           </div>
 
-          <div className="mt-4 flex flex-wrap gap-4">
+          <div className="mt-4 flex flex-wrap gap-5">
             <div className="flex items-center gap-2 text-xs text-muted-foreground">
               <span
-                className="h-0.5 w-5 rounded-full"
-                style={{ backgroundColor: primaryColor }}
+                className="h-0.5 w-6 rounded-full"
+                style={{ background: "linear-gradient(90deg, #16a34a, #2563eb)" }}
               />
-              Predicted Price
+              <span className={isHindi ? "font-devanagari" : ""}>{t(lang, "chart_predicted")}</span>
             </div>
             <div className="flex items-center gap-2 text-xs text-muted-foreground">
-              <span
-                className="h-0.5 w-5 rounded-full border border-dashed"
-                style={{ borderColor: accentColor }}
-              />
-              Confidence Band
+              <span className="h-2 w-6 rounded-full bg-sky-300/70" />
+              <span className={isHindi ? "font-devanagari" : ""}>{t(lang, "chart_confidence_band")}</span>
             </div>
           </div>
         </div>

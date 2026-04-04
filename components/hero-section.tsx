@@ -1,62 +1,85 @@
-import { TrendingUp, BarChart3 } from "lucide-react";
+﻿import { TrendingUp, BarChart3 } from "lucide-react";
+import { useLang } from "@/lib/lang-context";
+import { t } from "@/lib/types";
 
 export function HeroSection() {
+  const { lang, isHindi } = useLang();
+
   return (
-    <section className="relative overflow-hidden bg-foreground">
-      {/* Background image with overlay */}
+    <section className="hero-mesh noise-overlay relative overflow-hidden bg-[#071510]">
       <div
-        className="absolute inset-0 bg-cover bg-center opacity-30"
-        style={{ backgroundImage: "url('/images/hero-bg.jpg')" }}
+        className="absolute inset-0"
+        style={{
+          background:
+            "linear-gradient(145deg, #071510 0%, #0a1e13 45%, #071510 100%)",
+        }}
         aria-hidden="true"
       />
-      <div className="absolute inset-0 bg-foreground/60" aria-hidden="true" />
+
+      <div
+        className="absolute -top-24 right-[8%] h-72 w-72 rounded-full opacity-60 blur-3xl"
+        style={{ background: "radial-gradient(circle, rgba(33,140,84,0.45) 0%, rgba(33,140,84,0) 70%)" }}
+        aria-hidden="true"
+      />
+      <div
+        className="absolute bottom-[-7rem] left-[-4rem] h-80 w-80 rounded-full opacity-55 blur-3xl"
+        style={{ background: "radial-gradient(circle, rgba(16,185,129,0.38) 0%, rgba(16,185,129,0) 70%)" }}
+        aria-hidden="true"
+      />
 
       <div className="container relative z-10 flex flex-col items-center py-24 text-center md:py-32 lg:py-40">
-        <div className="mb-6 inline-flex items-center gap-2 rounded-full border border-primary/30 bg-primary/10 px-4 py-1.5">
-          <span className="h-2 w-2 rounded-full bg-success animate-pulse" />
-          <span className="text-xs font-medium text-primary-foreground/80">
-            Prescriptive Agricultural Intelligence
+        <div className="fade-in-up mb-6 inline-flex items-center gap-2 rounded-full border border-white/10 bg-white/5 px-4 py-1.5 backdrop-blur-sm">
+          <span className="glow-dot h-2.5 w-2.5 rounded-full bg-green-400" />
+          <span className={`text-xs font-semibold tracking-wide text-white/80 ${isHindi ? "font-devanagari" : ""}`}>
+            {t(lang, "hero_badge")}
           </span>
         </div>
 
-        <h1 className="max-w-3xl text-balance text-4xl font-bold leading-tight tracking-tight text-card md:text-5xl lg:text-6xl">
-          AI-Powered Agricultural Market Intelligence
+        <h1
+          className={`animate-fade-up animate-fade-up-1 max-w-4xl text-balance text-4xl font-display font-bold leading-tight tracking-tight text-white md:text-5xl lg:text-6xl ${isHindi ? "font-devanagari" : ""}`}
+        >
+          {t(lang, "hero_title")}
         </h1>
 
-        <p className="mt-5 max-w-xl text-pretty text-lg leading-relaxed text-card/70 md:text-xl">
-          Predict crop prices, discover best mandis, and make smarter selling
-          decisions with real-time AI-driven forecasts and recommendations.
+        <p
+          className={`animate-fade-up animate-fade-up-2 mt-5 max-w-2xl text-pretty text-lg leading-relaxed text-white/70 md:text-xl ${isHindi ? "font-devanagari" : ""}`}
+        >
+          {t(lang, "hero_subtitle")}
         </p>
 
-        <div className="mt-10 flex flex-col gap-3 sm:flex-row sm:gap-4">
+        <div className="animate-fade-up animate-fade-up-3 mt-10 flex flex-col gap-3 sm:flex-row sm:gap-4">
           <a
             href="#forecast"
-            className="inline-flex items-center justify-center gap-2 rounded-lg bg-primary px-6 py-3 text-sm font-semibold text-primary-foreground shadow-lg shadow-primary/25 transition-all hover:bg-primary/90 hover:shadow-primary/40"
+            className={`inline-flex items-center justify-center gap-2 rounded-xl bg-primary px-7 py-3.5 text-sm font-semibold text-white shadow-lg transition-all hover:scale-[1.02] hover:bg-primary-dark hover:shadow-xl ${isHindi ? "font-devanagari" : ""}`}
           >
             <TrendingUp className="h-4 w-4" />
-            Start Forecast
+            {t(lang, "hero_cta_primary")}
           </a>
           <a
             href="#dashboard"
-            className="inline-flex items-center justify-center gap-2 rounded-lg border border-card/20 bg-card/10 px-6 py-3 text-sm font-semibold text-card backdrop-blur-sm transition-colors hover:bg-card/20"
+            className={`inline-flex items-center justify-center gap-2 rounded-xl border border-white/15 bg-white/10 px-7 py-3.5 text-sm font-semibold text-white backdrop-blur-sm transition-all hover:bg-white/15 ${isHindi ? "font-devanagari" : ""}`}
           >
             <BarChart3 className="h-4 w-4" />
-            View Market Trends
+            {t(lang, "hero_cta_secondary")}
           </a>
         </div>
 
-        {/* Stats bar */}
-        <div className="mt-16 grid w-full max-w-2xl grid-cols-3 gap-4 rounded-2xl border border-card/10 bg-card/5 p-6 backdrop-blur-md">
+        <div className="animate-fade-up animate-fade-up-4 mt-16 grid w-full max-w-3xl grid-cols-3 overflow-hidden rounded-2xl border border-white/10 bg-white/8 backdrop-blur-md">
           {[
-            { label: "Mandis Tracked", value: "500+" },
-            { label: "Crops Covered", value: "50+" },
-            { label: "Forecast Accuracy", value: "92%" },
-          ].map((stat) => (
-            <div key={stat.label} className="flex flex-col items-center gap-1">
-              <span className="text-2xl font-bold text-card md:text-3xl">
+            { labelKey: "hero_stat_mandis" as const, value: "500+" },
+            { labelKey: "hero_stat_crops" as const, value: "50+" },
+            { labelKey: "hero_stat_accuracy" as const, value: "92%" },
+          ].map((stat, idx) => (
+            <div
+              key={stat.labelKey}
+              className={`flex flex-col items-center gap-1.5 px-4 py-6 transition-colors hover:bg-black/20 ${idx !== 0 ? "border-l border-white/10" : ""}`}
+            >
+              <span className="text-3xl font-display font-bold text-white md:text-4xl">
                 {stat.value}
               </span>
-              <span className="text-xs text-card/60">{stat.label}</span>
+              <span className={`text-xs text-white/55 ${isHindi ? "font-devanagari" : ""}`}>
+                {t(lang, stat.labelKey)}
+              </span>
             </div>
           ))}
         </div>

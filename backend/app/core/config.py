@@ -24,6 +24,54 @@ class Settings(BaseModel):
             "http://localhost:3000,http://127.0.0.1:3000",
         )
     )
+    cors_origin_regex: str = Field(
+        default_factory=lambda: os.getenv(
+            "AGRIPULSE_CORS_ORIGIN_REGEX",
+            r"^https?://(localhost|127\.0\.0\.1)(:\d+)?$",
+        )
+    )
+    # Price row source mode:
+    # - local_csv (default): always use bundled CSV dataset
+    # - data_gov: try data.gov.in first, then fallback to local CSV on failure
+    # - auto: same as data_gov, retained for backward compatibility
+    price_source: str = Field(
+        default_factory=lambda: os.getenv(
+            "AGRIPULSE_PRICE_SOURCE",
+            "local_csv",
+        )
+    )
+    # Optional external source (data.gov.in) for mandi/commodity price rows.
+    data_gov_base_url: str = Field(
+        default_factory=lambda: os.getenv(
+            "AGRIPULSE_DATA_GOV_BASE_URL",
+            "https://api.data.gov.in/resource",
+        )
+    )
+    data_gov_resource_id: str = Field(
+        default_factory=lambda: os.getenv(
+            "AGRIPULSE_DATA_GOV_RESOURCE_ID",
+            "35985678-0d79-46b4-9ed6-6f13308a1d24",
+        )
+    )
+    data_gov_api_key: str = Field(
+        default_factory=lambda: os.getenv(
+            "AGRIPULSE_DATA_GOV_API_KEY",
+            # Allow using the same key already configured for app auth.
+            os.getenv("AGRIPULSE_API_KEY", ""),
+        )
+    )
+    data_gov_page_size: int = Field(
+        default_factory=lambda: int(os.getenv("AGRIPULSE_DATA_GOV_PAGE_SIZE", "200"))
+    )
+    data_gov_max_records: int = Field(
+        default_factory=lambda: int(os.getenv("AGRIPULSE_DATA_GOV_MAX_RECORDS", "5000"))
+    )
+    data_gov_timeout_sec: float = Field(
+        default_factory=lambda: float(os.getenv("AGRIPULSE_DATA_GOV_TIMEOUT_SEC", "8"))
+    )
+    data_gov_total_timeout_sec: float = Field(
+        default_factory=lambda: float(os.getenv("AGRIPULSE_DATA_GOV_TOTAL_TIMEOUT_SEC", "45"))
+    )
 
 
 settings = Settings()

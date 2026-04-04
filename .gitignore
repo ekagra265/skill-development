@@ -7,3 +7,9 @@ node_modules/
 dist/
 build/
 *.tsbuildinfo
+backend/*.log
+backend/logs/*.log
+*.out.log
+*.err.log
+data/reports.json
+run.txt

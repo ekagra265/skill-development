@@ -8,9 +8,9 @@ import {
   AlertTriangle,
   Target,
   Activity,
-  Zap,
 } from "lucide-react";
 import type { ForecastResponse } from "@/lib/types";
+import { SaveReportBtn } from "@/components/save-report-btn";
 
 function RecommendationCard({
   recommendation,
@@ -46,6 +46,21 @@ function RecommendationCard({
       <p className="text-sm leading-relaxed text-card-foreground">
         {recommendation.message}
       </p>
+      {/* Confidence bar */}
+      <div>
+        <div className="mb-1 flex items-center justify-between">
+          <span className="text-xs text-muted-foreground">Confidence</span>
+          <span className="text-xs font-semibold text-foreground">
+            {recommendation.confidence}%
+          </span>
+        </div>
+        <div className="h-2 w-full overflow-hidden rounded-full bg-muted">
+          <div
+            className="h-full rounded-full bg-primary transition-all duration-500"
+            style={{ width: `${recommendation.confidence}%` }}
+          />
+        </div>
+      </div>
     </div>
   );
 }
@@ -91,16 +106,21 @@ export function ForecastDashboard({ data }: { data: ForecastResponse }) {
   return (
     <section className="py-8">
       <div className="container">
-        <div className="mb-6 flex flex-col gap-1">
-          <span className="text-xs font-semibold uppercase tracking-wider text-muted-foreground">
-            Forecast Results
-          </span>
-          <h2 className="text-2xl font-bold text-foreground">
-            {data.crop} at {data.mandi}
-          </h2>
+        {/* Header row with Save button */}
+        <div className="mb-6 flex flex-wrap items-start justify-between gap-4">
+          <div className="flex flex-col gap-1">
+            <span className="text-xs font-semibold uppercase tracking-wider text-muted-foreground">
+              Forecast Results
+            </span>
+            <h2 className="text-2xl font-bold text-foreground">
+              {data.crop} at {data.mandi}
+            </h2>
+          </div>
+          {/* Save + Download PDF button */}
+          <SaveReportBtn forecastData={data} />
         </div>
 
-        {/* Key decision cards first */}
+        {/* Recommendation card */}
         <div className="mb-6">
           <RecommendationCard recommendation={data.recommendation} />
         </div>
@@ -110,7 +130,7 @@ export function ForecastDashboard({ data }: { data: ForecastResponse }) {
           <StatCard
             icon={Target}
             label="Current Price"
-            value={`\u20B9${data.current_price.toLocaleString("en-IN")}/q`}
+            value={`₹${data.current_price.toLocaleString("en-IN")}/q`}
             color="bg-primary/10 text-primary"
           />
           <StatCard

@@ -21,9 +21,13 @@ from app.schemas import ForecastRequest, ForecastResponse
 from app.services.crop_prices import (
     get_latest_crop_prices,
     get_markets_for_commodity,
+    get_rows_source_info,
     get_unique_commodities,
     get_unique_states,
 )
+
+# ── NEW: import reports router ─────────────────────────────────────────────────
+from app.routes.reports import router as reports_router
 
 app = FastAPI(title=settings.app_name, version=settings.app_version)
 app.add_middleware(
@@ -33,6 +37,9 @@ app.add_middleware(
     allow_methods=["*"],
     allow_headers=["*"],
 )
+
+# ── NEW: register reports router ───────────────────────────────────────────────
+app.include_router(reports_router)
 
 
 @app.middleware("http")
@@ -105,11 +112,13 @@ async def metadata(
             return {
                 "commodity": commodity,
                 "markets": get_markets_for_commodity(commodity),
+                "dataSource": get_rows_source_info(),
             }
         return {
             "states": get_unique_states(),
             "commodities": get_unique_commodities(),
             "cropPrices": get_latest_crop_prices(),
+            "dataSource": get_rows_source_info(),
         }
     except FileNotFoundError as exc:
         raise DataNotFoundError(str(exc)) from exc
@@ -123,7 +132,6 @@ async def forecast(
     _: Annotated[None, Depends(require_api_key)],
     run_forecast_pipeline: Annotated[ForecastService, Depends(get_forecast_service)],
 ) -> ForecastResponse:
-    # CHANGED: Thin controller, delegates business logic to forecast pipeline service.
     result = run_forecast_pipeline(payload)
     return ForecastResponse(**result)
 

@@ -4,7 +4,15 @@ from datetime import date, datetime
 from functools import lru_cache
 from importlib import import_module
 from pathlib import Path
+from time import perf_counter
 from typing import Any
+
+import requests
+from requests.adapters import HTTPAdapter
+from urllib3.util.retry import Retry
+
+from app.core.config import settings
+from app.core.logger import logger
 
 
 DATASET_CANDIDATES = (
@@ -19,12 +27,20 @@ COLUMN_RENAMES = {
     "Price Date": "Date",
     "Modal_Price": "Modal Price",
     "STATE": "State",
+    "District Name": "District",
     "Market Name": "Market",
 }
+
+_ROWS_SOURCE = "unknown"
+_ROWS_SOURCE_DETAIL = ""
 
 
 def _norm(value: str | None) -> str:
     return (value or "").strip().casefold()
+
+
+def _clean_key(value: str) -> str:
+    return "".join(ch for ch in value.casefold() if ch.isalnum())
 
 
 def _resolve_dataset_path() -> Path:
@@ -46,8 +62,110 @@ def _pd():
         ) from exc
 
 
-@lru_cache(maxsize=1)
-def _load_rows() -> list[dict[str, Any]]:
+def _pick_field(record: dict[str, Any], aliases: tuple[str, ...]) -> Any:
+    normalized = {_clean_key(str(k)): v for k, v in record.items()}
+    for alias in aliases:
+        key = _clean_key(alias)
+        if key in normalized:
+            return normalized[key]
+    return None
+
+
+def _parse_remote_date(value: Any) -> datetime | None:
+    text = str(value or "").strip()
+    if not text:
+        return None
+
+    known_formats = (
+        "%Y-%m-%d",
+        "%d-%m-%Y",
+        "%d/%m/%Y",
+        "%d-%m-%y",
+        "%d/%m/%y",
+        "%d-%b-%y",
+        "%Y-%m-%d %H:%M:%S",
+        "%Y-%m-%dT%H:%M:%S",
+    )
+    for fmt in known_formats:
+        try:
+            return datetime.strptime(text, fmt)
+        except ValueError:
+            continue
+
+    pd = _pd()
+    parsed = pd.to_datetime(text, errors="coerce", dayfirst=True)
+    if hasattr(parsed, "to_pydatetime"):
+        return parsed.to_pydatetime()
+    return None
+
+
+def _parse_remote_price(value: Any) -> float | None:
+    text = str(value or "").strip().replace(",", "")
+    if not text:
+        return None
+    try:
+        return float(text)
+    except ValueError:
+        return None
+
+
+def _normalize_remote_record(record: dict[str, Any]) -> dict[str, Any] | None:
+    parsed_date = _parse_remote_date(
+        _pick_field(record, ("Date", "Arrival_Date", "Price Date"))
+    )
+    parsed_price = _parse_remote_price(
+        _pick_field(record, ("Modal Price", "Modal_Price", "modal_price"))
+    )
+
+    state = str(_pick_field(record, ("State", "STATE")) or "").strip()
+    district = str(_pick_field(record, ("District", "District Name")) or "").strip()
+    market = str(_pick_field(record, ("Market", "Market Name")) or "").strip()
+    commodity = str(_pick_field(record, ("Commodity",)) or "").strip()
+
+    if (
+        parsed_date is None
+        or parsed_price is None
+        or not state
+        or not market
+        or not commodity
+    ):
+        return None
+
+    return {
+        "Date": parsed_date,
+        "Modal Price": parsed_price,
+        "State": state,
+        "District": district,
+        "Market": market,
+        "Commodity": commodity,
+    }
+
+
+def _http_session() -> requests.Session:
+    # data.gov.in can occasionally reset connections; retries reduce transient failures.
+    retry = Retry(
+        total=2,
+        connect=2,
+        read=2,
+        backoff_factor=0.3,
+        status_forcelist=(429, 500, 502, 503, 504),
+        allowed_methods=frozenset({"GET"}),
+        raise_on_status=False,
+    )
+    adapter = HTTPAdapter(max_retries=retry)
+    session = requests.Session()
+    session.mount("https://", adapter)
+    session.mount("http://", adapter)
+    session.headers.update(
+        {
+            "Accept": "application/json",
+            "User-Agent": "Mozilla/5.0 (AgriPulse/1.0; +https://api.data.gov.in)",
+        }
+    )
+    return session
+
+
+def _load_rows_from_local_dataset() -> list[dict[str, Any]]:
     pd = _pd()
     dataset_path = _resolve_dataset_path()
     frame = pd.read_csv(dataset_path).rename(columns=COLUMN_RENAMES)
@@ -59,10 +177,12 @@ def _load_rows() -> list[dict[str, Any]]:
             "Dataset is missing required columns: " + ", ".join(missing_columns)
         )
 
-    frame["Date"] = pd.to_datetime(frame["Date"], errors="coerce")
+    frame["Date"] = pd.to_datetime(frame["Date"], errors="coerce", dayfirst=True)
     frame["Modal Price"] = pd.to_numeric(frame["Modal Price"], errors="coerce")
 
-    for column in ("State", "Market", "Commodity"):
+    for column in ("State", "District", "Market", "Commodity"):
+        if column not in frame.columns:
+            continue
         frame[column] = frame[column].astype(str).str.strip()
 
     frame = frame.dropna(subset=["Date", "Modal Price"])
@@ -77,7 +197,140 @@ def _load_rows() -> list[dict[str, Any]]:
             f"Dataset must contain at least 30 valid rows after cleaning; found {len(frame)}."
         )
 
+    logger.info("Loaded %s rows from local dataset: %s", len(frame), dataset_path)
     return frame.to_dict(orient="records")
+
+
+def _load_rows_from_data_gov() -> list[dict[str, Any]]:
+    api_key = settings.data_gov_api_key.strip()
+    resource_id = settings.data_gov_resource_id.strip()
+    if not api_key or not resource_id:
+        raise ValueError("Missing data.gov.in API key or resource id.")
+
+    endpoint = f"{settings.data_gov_base_url.rstrip('/')}/{resource_id}"
+    page_size = max(1, min(int(settings.data_gov_page_size), 1000))
+    max_records = max(page_size, int(settings.data_gov_max_records))
+    total_timeout = max(5.0, float(settings.data_gov_total_timeout_sec))
+
+    rows: list[dict[str, Any]] = []
+    offset = 0
+    started_at = perf_counter()
+
+    with _http_session() as session:
+        while offset < max_records:
+            if perf_counter() - started_at > total_timeout:
+                logger.warning(
+                    "Stopping data.gov.in fetch early after %.1fs (rows=%s)",
+                    total_timeout,
+                    len(rows),
+                )
+                break
+
+            limit = min(page_size, max_records - offset)
+            response = session.get(
+                endpoint,
+                params={
+                    "api-key": api_key,
+                    "format": "json",
+                    "offset": offset,
+                    "limit": limit,
+                    "fields": "State,District,Market,Commodity,Arrival_Date,Modal_Price",
+                },
+                headers={"api-key": api_key},
+                timeout=float(settings.data_gov_timeout_sec),
+            )
+            response.raise_for_status()
+
+            payload = response.json()
+            records = payload.get("records") or []
+            if not isinstance(records, list):
+                raise ValueError("Unexpected data.gov.in response: 'records' must be a list.")
+
+            if not records:
+                break
+
+            for record in records:
+                if not isinstance(record, dict):
+                    continue
+                normalized = _normalize_remote_record(record)
+                if normalized:
+                    rows.append(normalized)
+
+            if len(records) < limit:
+                break
+
+            offset += limit
+
+    if len(rows) < 30:
+        raise ValueError(
+            f"data.gov.in returned only {len(rows)} usable rows; need at least 30."
+        )
+
+    logger.info(
+        "Loaded %s rows from data.gov.in resource=%s",
+        len(rows),
+        resource_id,
+    )
+    return rows
+
+
+def _resolve_source_mode() -> str:
+    raw = (settings.price_source or "").strip().casefold()
+    if raw in {"local_csv", "local", "csv"}:
+        return "local_csv"
+    if raw in {"data_gov", "datagov", "api"}:
+        return "data_gov"
+    if raw == "auto":
+        return "auto"
+
+    logger.warning(
+        "Unknown AGRIPULSE_PRICE_SOURCE='%s'; defaulting to local_csv.",
+        settings.price_source,
+    )
+    return "local_csv"
+
+
+@lru_cache(maxsize=1)
+def _load_rows() -> list[dict[str, Any]]:
+    global _ROWS_SOURCE, _ROWS_SOURCE_DETAIL
+    source_mode = _resolve_source_mode()
+
+    if source_mode == "local_csv":
+        rows = _load_rows_from_local_dataset()
+        _ROWS_SOURCE = "local_csv"
+        _ROWS_SOURCE_DETAIL = "forced local dataset"
+        return rows
+
+    # data_gov / auto mode
+    fallback_reason = ""
+    if settings.data_gov_api_key.strip() and settings.data_gov_resource_id.strip():
+        try:
+            rows = _load_rows_from_data_gov()
+            _ROWS_SOURCE = "data_gov"
+            _ROWS_SOURCE_DETAIL = f"resource={settings.data_gov_resource_id}"
+            return rows
+        except Exception as exc:
+            fallback_reason = str(exc)
+            logger.warning("Falling back to local dataset; data.gov.in fetch failed: %s", exc)
+    else:
+        fallback_reason = "Missing data.gov.in key/resource id"
+
+    rows = _load_rows_from_local_dataset()
+    _ROWS_SOURCE = "local_csv"
+    if source_mode == "data_gov":
+        _ROWS_SOURCE_DETAIL = f"fallback from data_gov: {fallback_reason}"
+    else:
+        _ROWS_SOURCE_DETAIL = fallback_reason or "using local dataset"
+    return rows
+
+
+def get_rows_source_info() -> dict[str, str | None]:
+    # Ensure data is loaded at least once so source info is meaningful.
+    _load_rows()
+    return {
+        "source": _ROWS_SOURCE,
+        "detail": _ROWS_SOURCE_DETAIL or None,
+    }
 
 
 def resolve_state_for_market(market: str) -> str | None:
@@ -135,12 +388,19 @@ def _to_iso_date(value: Any) -> str | None:
     return None
 
 
-def get_latest_crop_prices() -> list[dict[str, Any]]:
-    target_commodities = ("Wheat", "Tomato", "Potato", "Onion")
+def get_latest_crop_prices(limit: int = 50) -> list[dict[str, Any]]:
+    safe_limit = max(1, int(limit))
     rows = _load_rows()
     result: list[dict[str, Any]] = []
+    commodities = sorted(
+        {
+            str(row.get("Commodity", "")).strip()
+            for row in rows
+            if str(row.get("Commodity", "")).strip()
+        }
+    )
 
-    for commodity in target_commodities:
+    for commodity in commodities:
         commodity_rows = [
             row
             for row in rows
@@ -192,7 +452,8 @@ def get_latest_crop_prices() -> list[dict[str, Any]]:
             }
         )
 
-    return result
+    result.sort(key=lambda item: (-float(item["price"]), str(item["name"]).casefold()))
+    return result[:safe_limit]
 
 
 def load_prophet_history(
