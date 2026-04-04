@@ -24,7 +24,14 @@ export function SaveReportBtn({ forecastData }: SaveReportBtnProps) {
       setReportId(data.report_id);
       setStatus("saved");
     } catch (err) {
-      setErrorMsg(err instanceof Error ? err.message : "Failed to save");
+      const raw = err instanceof Error ? err.message : "Failed to save";
+      const requiresLogin =
+        /token|unauthorized|missing bearer|invalid token|expired/i.test(raw);
+      setErrorMsg(
+        requiresLogin
+          ? "Login required for report actions. Open /login and sign in."
+          : raw
+      );
       setStatus("error");
     }
   }

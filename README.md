@@ -19,6 +19,7 @@ AgriPulse is a crop-market intelligence app with:
 - Automatic fallback to baseline when Prophet runtime fails
 - Metadata endpoint cache (TTL) for better responsiveness
 - Forecast endpoint cache (short TTL) for faster repeated requests
+- JWT login for report APIs (`/auth/login`, `/auth/me`)
 
 ## Quick run (Windows)
 
@@ -79,6 +80,8 @@ Important keys:
 - `AGRIPULSE_API_KEY`
 - `AGRIPULSE_PRICE_SOURCE` (`local_csv` recommended for local development)
 - `AGRIPULSE_REPORTS_DB_PATH` (optional custom SQLite path)
+- `AGRIPULSE_AUTH_ENABLED` (`1` enables JWT protection for report APIs)
+- `AGRIPULSE_AUTH_DEMO_USERNAME` / `AGRIPULSE_AUTH_DEMO_PASSWORD` (demo login credentials)
 
 ## Docker
 
@@ -110,6 +113,8 @@ pnpm lint
 - `GET /metadata`
 - `POST /forecast`
 - `GET /best-mandi`
+- `POST /auth/login`
+- `GET /auth/me`
 - `POST /reports/save`
 - `GET /reports/history`
 - `GET /reports/download/{report_id}`

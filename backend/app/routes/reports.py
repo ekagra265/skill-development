@@ -10,7 +10,7 @@ from typing import Annotated
 from fastapi import APIRouter, Depends, HTTPException, Query
 from fastapi.responses import Response
 
-from app.core.dependencies import require_api_key
+from app.core.dependencies import AuthUser, require_api_key, require_auth_user
 from app.services.report_storage import (
     delete_report_by_id,
     generate_pdf,
@@ -21,11 +21,12 @@ from app.services.report_storage import (
 
 router = APIRouter(prefix="/reports", tags=["reports"])
 
-Auth = Annotated[None, Depends(require_api_key)]
+ApiAuth = Annotated[None, Depends(require_api_key)]
+UserAuth = Annotated[AuthUser, Depends(require_auth_user)]
 
 
 @router.post("/save")
-async def save_forecast_report(payload: dict, _: Auth) -> dict:
+async def save_forecast_report(payload: dict, _: ApiAuth, __: UserAuth) -> dict:
     """
     Save a forecast result as a report.
     Accepts the full ForecastResponse JSON body sent from the frontend.
@@ -39,7 +40,8 @@ async def save_forecast_report(payload: dict, _: Auth) -> dict:
 
 @router.get("/history")
 async def get_report_history(
-    _: Auth,
+    _: ApiAuth,
+    __: UserAuth,
     q: str | None = None,
     recommendation: str | None = None,
     risk_level: str | None = Query(default=None, alias="riskLevel"),
@@ -62,7 +64,7 @@ async def get_report_history(
 
 
 @router.get("/download/{report_id}")
-async def download_report_pdf(report_id: str, _: Auth) -> Response:
+async def download_report_pdf(report_id: str, _: ApiAuth, __: UserAuth) -> Response:
     """Download a specific report as a PDF file."""
     report = get_report_by_id(report_id)
     if not report:
@@ -80,7 +82,7 @@ async def download_report_pdf(report_id: str, _: Auth) -> Response:
 
 
 @router.delete("/{report_id}")
-async def delete_report(report_id: str, _: Auth) -> dict:
+async def delete_report(report_id: str, _: ApiAuth, __: UserAuth) -> dict:
     """Delete a saved report by ID."""
     deleted = delete_report_by_id(report_id)
     if not deleted:

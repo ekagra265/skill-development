@@ -36,6 +36,23 @@ class MandiOption(BaseModel):
     expected_7d_change_pct: float
 
 
+class LoginRequest(BaseModel):
+    username: str
+    password: str
+
+
+class AuthenticatedUser(BaseModel):
+    username: str
+    role: str
+
+
+class LoginResponse(BaseModel):
+    access_token: str
+    token_type: Literal["bearer"] = "bearer"
+    expires_in: int
+    user: AuthenticatedUser
+
+
 class ForecastResponse(BaseModel):
     crop: str
     mandi: str

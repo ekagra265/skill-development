@@ -51,9 +51,16 @@ export default function DashboardPage() {
   const [error, setError] = useState("");
 
   useEffect(() => {
-    fetchReportHistory()
+    fetchReportHistory({ limit: 8, sort: "date" })
       .then((d) => setReports(d.reports))
-      .catch(() => setError("Could not load reports. Make sure the backend is running."))
+      .catch((err) => {
+        const msg = err instanceof Error ? err.message : "";
+        if (/token|unauthorized|missing bearer|invalid token|expired/i.test(msg)) {
+          setError("Login required for reports. Open /login and sign in.");
+        } else {
+          setError("Could not load reports. Make sure the backend is running.");
+        }
+      })
       .finally(() => setLoading(false));
   }, []);
 
@@ -179,7 +186,7 @@ export default function DashboardPage() {
                     </tr>
                   </thead>
                   <tbody>
-                    {reports.slice(0, 8).map((r) => (
+                    {reports.map((r) => (
                       <tr
                         key={r.id}
                         className="border-b border-border/50 transition-colors last:border-0 hover:bg-muted/30"

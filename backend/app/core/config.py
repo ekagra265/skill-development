@@ -75,6 +75,25 @@ class Settings(BaseModel):
     data_gov_total_timeout_sec: float = Field(
         default_factory=lambda: float(os.getenv("AGRIPULSE_DATA_GOV_TOTAL_TIMEOUT_SEC", "45"))
     )
+    auth_enabled: bool = Field(
+        default_factory=lambda: os.getenv("AGRIPULSE_AUTH_ENABLED", "1").strip().lower()
+        in {"1", "true", "yes", "on"}
+    )
+    auth_secret_key: str = Field(
+        default_factory=lambda: os.getenv(
+            "AGRIPULSE_AUTH_SECRET_KEY",
+            "agripulse-dev-auth-secret-change-in-production",
+        )
+    )
+    auth_token_exp_minutes: int = Field(
+        default_factory=lambda: int(os.getenv("AGRIPULSE_AUTH_TOKEN_EXP_MINUTES", "720"))
+    )
+    auth_demo_username: str = Field(
+        default_factory=lambda: os.getenv("AGRIPULSE_AUTH_DEMO_USERNAME", "admin")
+    )
+    auth_demo_password: str = Field(
+        default_factory=lambda: os.getenv("AGRIPULSE_AUTH_DEMO_PASSWORD", "admin123")
+    )
 
 
 settings = Settings()

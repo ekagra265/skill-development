@@ -15,11 +15,14 @@ class ApiEndpointIntegrationTests(unittest.TestCase):
     @classmethod
     def setUpClass(cls) -> None:
         cls._original_key_enabled = settings.api_key_enabled
+        cls._original_auth_enabled = settings.auth_enabled
         settings.api_key_enabled = False
+        settings.auth_enabled = False
 
     @classmethod
     def tearDownClass(cls) -> None:
         settings.api_key_enabled = cls._original_key_enabled
+        settings.auth_enabled = cls._original_auth_enabled
 
     def setUp(self) -> None:
         app.dependency_overrides.clear()

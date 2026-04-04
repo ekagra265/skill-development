@@ -30,6 +30,7 @@ from app.services.crop_prices import (
 from app.services.report_storage import get_report_store_status
 
 # ── NEW: import reports router ─────────────────────────────────────────────────
+from app.routes.auth import router as auth_router
 from app.routes.reports import router as reports_router
 
 _METADATA_CACHE_TTL_SEC = 20.0
@@ -52,6 +53,7 @@ app.add_middleware(
 
 # ── NEW: register reports router ───────────────────────────────────────────────
 app.include_router(reports_router)
+app.include_router(auth_router)
 
 
 def _cache_key(commodity: str | None, top_crops: int) -> tuple[str | None, int]:
@@ -201,6 +203,7 @@ def health() -> dict:
         "status": "ok",
         "service": settings.app_name,
         "version": settings.app_version,
+        "auth_enabled": settings.auth_enabled,
         "price_source": settings.price_source,
         "report_store": report_store,
         "forecast_cache": forecast_cache_status,

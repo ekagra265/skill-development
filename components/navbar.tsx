@@ -1,8 +1,9 @@
 "use client";
 
-import { useState } from "react";
+import { useEffect, useState } from "react";
 import { Menu, X, Sprout, LayoutDashboard } from "lucide-react";
 import Link from "next/link";
+import { clearAccessToken, hasAccessToken } from "@/lib/api";
 
 const navLinks = [
   { label: "Forecast", href: "/forecast" },
@@ -14,6 +15,19 @@ const navLinks = [
 
 export function Navbar() {
   const [open, setOpen] = useState(false);
+  const [loggedIn, setLoggedIn] = useState(false);
+
+  useEffect(() => {
+    setLoggedIn(hasAccessToken());
+  }, []);
+
+  function handleLogout() {
+    clearAccessToken();
+    setLoggedIn(false);
+    if (typeof window !== "undefined") {
+      window.location.href = "/login";
+    }
+  }
 
   return (
     <header className="sticky top-0 z-50 border-b border-border bg-card/80 backdrop-blur-md">
@@ -53,6 +67,20 @@ export function Navbar() {
           >
             Start Forecast
           </Link>
+          <Link
+            href="/login"
+            className="ml-2 rounded-lg border border-border px-3 py-2 text-sm font-medium text-muted-foreground transition-colors hover:bg-secondary hover:text-foreground"
+          >
+            Login
+          </Link>
+          {loggedIn && (
+            <button
+              onClick={handleLogout}
+              className="ml-1 rounded-lg border border-destructive/30 bg-destructive/5 px-3 py-2 text-sm font-medium text-destructive transition-colors hover:bg-destructive/10"
+            >
+              Logout
+            </button>
+          )}
         </nav>
 
         {/* Mobile toggle */}
@@ -94,6 +122,24 @@ export function Navbar() {
             >
               Start Forecast
             </Link>
+            <Link
+              href="/login"
+              onClick={() => setOpen(false)}
+              className="mt-1 rounded-lg border border-border px-4 py-2.5 text-center text-sm font-medium text-foreground"
+            >
+              Login
+            </Link>
+            {loggedIn && (
+              <button
+                onClick={() => {
+                  setOpen(false);
+                  handleLogout();
+                }}
+                className="rounded-lg border border-destructive/30 bg-destructive/5 px-4 py-2.5 text-sm font-medium text-destructive"
+              >
+                Logout
+              </button>
+            )}
           </div>
         </nav>
       )}

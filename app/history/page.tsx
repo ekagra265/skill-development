@@ -80,9 +80,14 @@ export default function HistoryPage() {
         setReports(data.reports);
         setTotal(data.total);
       })
-      .catch(() => {
+      .catch((err) => {
         if (!active) return;
-        setError("Could not load history. Make sure the backend is running.");
+        const msg = err instanceof Error ? err.message : "";
+        if (/token|unauthorized|missing bearer|invalid token|expired/i.test(msg)) {
+          setError("Login required for report history. Open /login and sign in.");
+        } else {
+          setError("Could not load history. Make sure the backend is running.");
+        }
         setReports([]);
         setTotal(0);
       })
