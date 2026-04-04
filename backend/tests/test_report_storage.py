@@ -54,6 +54,19 @@ class ReportStorageTests(unittest.TestCase):
             },
         }
 
+    def _payload_with(self, **updates) -> dict:
+        payload = self._sample_payload()
+        recommendation = payload.get("recommendation", {}).copy()
+        if "recommendation_action" in updates:
+            recommendation["action"] = updates.pop("recommendation_action")
+        if "recommendation_risk" in updates:
+            recommendation["risk_level"] = updates.pop("recommendation_risk")
+        if "recommendation_confidence" in updates:
+            recommendation["confidence"] = updates.pop("recommendation_confidence")
+        payload["recommendation"] = recommendation
+        payload.update(updates)
+        return payload
+
     def test_save_get_and_delete_report(self) -> None:
         report_id = report_storage.save_report(self._sample_payload())
         self.assertEqual(len(report_id), 8)
@@ -105,6 +118,53 @@ class ReportStorageTests(unittest.TestCase):
         status = report_storage.get_report_store_status()
         self.assertEqual(status["backend"], "sqlite")
         self.assertEqual(status["total_reports"], 1)
+
+    def test_query_reports_with_filters_sort_and_pagination(self) -> None:
+        report_storage.save_report(
+            self._payload_with(
+                crop="Wheat",
+                mandi="Delhi",
+                current_price=2500,
+                recommendation_action="WAIT",
+                recommendation_risk="HIGH",
+                recommendation_confidence=42,
+            )
+        )
+        report_storage.save_report(
+            self._payload_with(
+                crop="Tomato",
+                mandi="Mumbai",
+                current_price=3200,
+                recommendation_action="SELL NOW",
+                recommendation_risk="MEDIUM",
+                recommendation_confidence=65,
+            )
+        )
+        report_storage.save_report(
+            self._payload_with(
+                crop="Onion",
+                mandi="Pune",
+                current_price=2100,
+                recommendation_action="HOLD",
+                recommendation_risk="LOW",
+                recommendation_confidence=55,
+            )
+        )
+
+        filtered = report_storage.query_reports(
+            q="to",
+            recommendation="SELL NOW",
+            risk_level="MEDIUM",
+            sort="price",
+            limit=10,
+            offset=0,
+        )
+        self.assertEqual(filtered["total"], 1)
+        self.assertEqual(filtered["reports"][0]["crop"], "Tomato")
+
+        paged = report_storage.query_reports(sort="conf", limit=1, offset=1)
+        self.assertEqual(paged["total"], 3)
+        self.assertEqual(len(paged["reports"]), 1)
 
 
 if __name__ == "__main__":

@@ -26,6 +26,8 @@ LEGACY_REPORTS_FILE = Path(
 _MAX_REPORTS = 200
 _INIT_LOCK = Lock()
 _INITIALIZED = False
+_VALID_RECOMMENDATIONS = {"WAIT", "SELL NOW", "HOLD"}
+_VALID_RISK_LEVELS = {"LOW", "MEDIUM", "HIGH"}
 
 
 def _ensure_parent(path: Path) -> None:
@@ -51,6 +53,82 @@ def _coerce_float(value: object, default: float = 0.0) -> float:
         return float(value)  # type: ignore[arg-type]
     except (TypeError, ValueError):
         return default
+
+
+def _extract_index_fields(report: dict) -> tuple[str, str, str, str, float, int]:
+    recommendation = str(report.get("recommendation", "")).upper().strip()
+    risk_level = str(report.get("risk_level", "")).upper().strip()
+    return (
+        str(report.get("crop", "")).strip(),
+        str(report.get("mandi", "")).strip(),
+        recommendation if recommendation in _VALID_RECOMMENDATIONS else "",
+        risk_level if risk_level in _VALID_RISK_LEVELS else "",
+        _coerce_float(report.get("current_price"), 0.0),
+        _coerce_int(report.get("confidence"), 0),
+    )
+
+
+def _ensure_report_columns(conn: sqlite3.Connection) -> None:
+    existing = {
+        row["name"] for row in conn.execute("PRAGMA table_info(reports)").fetchall()
+    }
+    desired: dict[str, str] = {
+        "crop": "TEXT",
+        "mandi": "TEXT",
+        "recommendation": "TEXT",
+        "risk_level": "TEXT",
+        "current_price": "REAL",
+        "confidence": "INTEGER",
+    }
+    for column, sql_type in desired.items():
+        if column not in existing:
+            conn.execute(f"ALTER TABLE reports ADD COLUMN {column} {sql_type}")
+
+    conn.execute(
+        "CREATE INDEX IF NOT EXISTS idx_reports_crop_mandi ON reports(crop, mandi)"
+    )
+    conn.execute(
+        "CREATE INDEX IF NOT EXISTS idx_reports_recommendation ON reports(recommendation)"
+    )
+    conn.execute(
+        "CREATE INDEX IF NOT EXISTS idx_reports_risk_level ON reports(risk_level)"
+    )
+
+
+def _backfill_report_columns(conn: sqlite3.Connection) -> None:
+    rows = conn.execute(
+        """
+        SELECT id, payload
+        FROM reports
+        WHERE crop IS NULL OR mandi IS NULL OR recommendation IS NULL
+           OR risk_level IS NULL OR current_price IS NULL OR confidence IS NULL
+        """
+    ).fetchall()
+    for row in rows:
+        try:
+            payload = json.loads(row["payload"])
+        except (TypeError, ValueError, json.JSONDecodeError):
+            continue
+        crop, mandi, recommendation, risk_level, current_price, confidence = (
+            _extract_index_fields(payload)
+        )
+        conn.execute(
+            """
+            UPDATE reports
+            SET crop = ?, mandi = ?, recommendation = ?, risk_level = ?,
+                current_price = ?, confidence = ?
+            WHERE id = ?
+            """,
+            (
+                crop,
+                mandi,
+                recommendation,
+                risk_level,
+                current_price,
+                confidence,
+                row["id"],
+            ),
+        )
 
 
 def _build_report(data: dict, report_id: str) -> dict:
@@ -117,25 +195,54 @@ def _initialize() -> None:
                 CREATE TABLE IF NOT EXISTS reports (
                     id TEXT PRIMARY KEY,
                     created_at TEXT NOT NULL,
-                    payload TEXT NOT NULL
+                    payload TEXT NOT NULL,
+                    crop TEXT,
+                    mandi TEXT,
+                    recommendation TEXT,
+                    risk_level TEXT,
+                    current_price REAL,
+                    confidence INTEGER
                 )
                 """
             )
             conn.execute(
                 "CREATE INDEX IF NOT EXISTS idx_reports_created_at ON reports(created_at DESC)"
             )
+            _ensure_report_columns(conn)
 
             existing_count = conn.execute("SELECT COUNT(*) FROM reports").fetchone()[0]
             if not existing_count:
                 for raw in _load_legacy_reports():
                     legacy_id = str(raw.get("id") or uuid.uuid4())[:8]
+                    (
+                        crop,
+                        mandi,
+                        recommendation,
+                        risk_level,
+                        current_price,
+                        confidence,
+                    ) = _extract_index_fields(raw)
                     conn.execute(
                         """
-                        INSERT OR REPLACE INTO reports(id, created_at, payload)
-                        VALUES (?, ?, ?)
+                        INSERT OR REPLACE INTO reports(
+                            id, created_at, payload, crop, mandi, recommendation,
+                            risk_level, current_price, confidence
+                        )
+                        VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?)
                         """,
-                        (legacy_id, _parse_created_at(raw), json.dumps(raw, ensure_ascii=False)),
+                        (
+                            legacy_id,
+                            _parse_created_at(raw),
+                            json.dumps(raw, ensure_ascii=False),
+                            crop,
+                            mandi,
+                            recommendation,
+                            risk_level,
+                            current_price,
+                            confidence,
+                        ),
                     )
+            _backfill_report_columns(conn)
             conn.commit()
 
         _INITIALIZED = True
@@ -148,14 +255,30 @@ def save_report(data: dict) -> str:
     _initialize()
     report_id = str(uuid.uuid4())[:8]
     report = _build_report(data, report_id)
+    crop, mandi, recommendation, risk_level, current_price, confidence = (
+        _extract_index_fields(report)
+    )
 
     with _connect() as conn:
         conn.execute(
             """
-            INSERT INTO reports(id, created_at, payload)
-            VALUES (?, ?, ?)
+            INSERT INTO reports(
+                id, created_at, payload, crop, mandi, recommendation,
+                risk_level, current_price, confidence
+            )
+            VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?)
             """,
-            (report_id, datetime.now().isoformat(), json.dumps(report, ensure_ascii=False)),
+            (
+                report_id,
+                datetime.now().isoformat(),
+                json.dumps(report, ensure_ascii=False),
+                crop,
+                mandi,
+                recommendation,
+                risk_level,
+                current_price,
+                confidence,
+            ),
         )
         conn.execute(
             """
@@ -186,6 +309,74 @@ def get_all_reports() -> list:
         except (TypeError, ValueError, json.JSONDecodeError):
             continue
     return reports
+
+
+def query_reports(
+    q: str | None = None,
+    recommendation: str | None = None,
+    risk_level: str | None = None,
+    sort: str = "date",
+    limit: int = 20,
+    offset: int = 0,
+) -> dict:
+    _initialize()
+    where_clauses: list[str] = []
+    params: list[object] = []
+
+    if q and q.strip():
+        needle = f"%{q.strip().lower()}%"
+        where_clauses.append("(lower(crop) LIKE ? OR lower(mandi) LIKE ?)")
+        params.extend([needle, needle])
+
+    normalized_recommendation = (recommendation or "").strip().upper()
+    if normalized_recommendation in _VALID_RECOMMENDATIONS:
+        where_clauses.append("recommendation = ?")
+        params.append(normalized_recommendation)
+
+    normalized_risk = (risk_level or "").strip().upper()
+    if normalized_risk in _VALID_RISK_LEVELS:
+        where_clauses.append("risk_level = ?")
+        params.append(normalized_risk)
+
+    where_sql = f"WHERE {' AND '.join(where_clauses)}" if where_clauses else ""
+
+    order_sql = {
+        "date": "created_at DESC",
+        "price": "current_price DESC, created_at DESC",
+        "conf": "confidence DESC, created_at DESC",
+    }.get(sort, "created_at DESC")
+
+    safe_limit = max(1, min(int(limit), 100))
+    safe_offset = max(0, int(offset))
+
+    with _connect() as conn:
+        total = int(
+            conn.execute(f"SELECT COUNT(*) FROM reports {where_sql}", tuple(params)).fetchone()[0]
+        )
+        rows = conn.execute(
+            f"""
+            SELECT payload
+            FROM reports
+            {where_sql}
+            ORDER BY {order_sql}
+            LIMIT ? OFFSET ?
+            """,
+            tuple(params + [safe_limit, safe_offset]),
+        ).fetchall()
+
+    reports: list[dict] = []
+    for row in rows:
+        try:
+            reports.append(json.loads(row["payload"]))
+        except (TypeError, ValueError, json.JSONDecodeError):
+            continue
+
+    return {
+        "reports": reports,
+        "total": total,
+        "limit": safe_limit,
+        "offset": safe_offset,
+    }
 
 
 def get_report_by_id(report_id: str) -> Optional[dict]:

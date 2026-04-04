@@ -118,6 +118,41 @@ class ApiEndpointIntegrationTests(unittest.TestCase):
         self.assertEqual(response.headers["content-type"], "application/pdf")
         self.assertTrue(response.content.startswith(b"%PDF-1.4"))
 
+    def test_reports_history_endpoint_with_filters(self) -> None:
+        with patch(
+            "app.routes.reports.query_reports",
+            return_value={
+                "reports": [{"id": "abc12345", "crop": "Wheat", "mandi": "Delhi"}],
+                "total": 1,
+                "limit": 10,
+                "offset": 0,
+            },
+        ) as mocked_query:
+            response = self.client.get(
+                "/reports/history",
+                params={
+                    "q": "whe",
+                    "recommendation": "WAIT",
+                    "riskLevel": "HIGH",
+                    "sort": "price",
+                    "limit": 10,
+                    "offset": 0,
+                },
+            )
+
+        self.assertEqual(response.status_code, 200)
+        payload = response.json()
+        self.assertEqual(payload["total"], 1)
+        self.assertEqual(payload["reports"][0]["id"], "abc12345")
+        mocked_query.assert_called_once_with(
+            q="whe",
+            recommendation="WAIT",
+            risk_level="HIGH",
+            sort="price",
+            limit=10,
+            offset=0,
+        )
+
     def test_health_endpoint(self) -> None:
         with patch(
             "app.main.get_report_store_status",

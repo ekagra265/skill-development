@@ -32,6 +32,22 @@ export type SavedReport = {
   language: string;
 };
 
+export type ReportHistoryParams = {
+  q?: string;
+  recommendation?: "WAIT" | "SELL NOW" | "HOLD";
+  riskLevel?: "LOW" | "MEDIUM" | "HIGH";
+  sort?: "date" | "price" | "conf";
+  limit?: number;
+  offset?: number;
+};
+
+export type ReportHistoryResponse = {
+  reports: SavedReport[];
+  total: number;
+  limit: number;
+  offset: number;
+};
+
 const RAW_API_BASE_URL = process.env.NEXT_PUBLIC_API_BASE_URL?.trim();
 const RAW_API_KEY = process.env.NEXT_PUBLIC_API_KEY?.trim() ?? "";
 const METADATA_CACHE_TTL_MS = 15_000;
@@ -196,12 +212,24 @@ export async function saveReport(
   return res.json();
 }
 
-export async function fetchReportHistory(): Promise<{
-  reports: SavedReport[];
-  total: number;
-}> {
+export async function fetchReportHistory(
+  params: ReportHistoryParams = {}
+): Promise<ReportHistoryResponse> {
+  const query = new URLSearchParams();
+  if (params.q?.trim()) query.set("q", params.q.trim());
+  if (params.recommendation) query.set("recommendation", params.recommendation);
+  if (params.riskLevel) query.set("riskLevel", params.riskLevel);
+  if (params.sort) query.set("sort", params.sort);
+  if (typeof params.limit === "number" && Number.isFinite(params.limit)) {
+    query.set("limit", String(Math.trunc(params.limit)));
+  }
+  if (typeof params.offset === "number" && Number.isFinite(params.offset)) {
+    query.set("offset", String(Math.trunc(params.offset)));
+  }
+  const path = query.toString() ? `/reports/history?${query}` : "/reports/history";
+
   const res = await fetchWithTimeout(
-    `${API_BASE_URL}/reports/history`,
+    `${API_BASE_URL}${path}`,
     { headers: authHeaders },
     DEFAULT_TIMEOUT_MS
   );

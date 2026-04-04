@@ -4,17 +4,18 @@ Matches the auth pattern used in the rest of your main.py (require_api_key depen
 """
 from __future__ import annotations
 
+from typing import Literal
 from typing import Annotated
 
-from fastapi import APIRouter, Depends, HTTPException
+from fastapi import APIRouter, Depends, HTTPException, Query
 from fastapi.responses import Response
 
 from app.core.dependencies import require_api_key
 from app.services.report_storage import (
     delete_report_by_id,
     generate_pdf,
-    get_all_reports,
     get_report_by_id,
+    query_reports,
     save_report,
 )
 
@@ -37,11 +38,25 @@ async def save_forecast_report(payload: dict, _: Auth) -> dict:
 
 
 @router.get("/history")
-async def get_report_history(_: Auth) -> dict:
-    """Return all saved reports, newest first."""
+async def get_report_history(
+    _: Auth,
+    q: str | None = None,
+    recommendation: str | None = None,
+    risk_level: str | None = Query(default=None, alias="riskLevel"),
+    sort: Literal["date", "price", "conf"] = "date",
+    limit: Annotated[int, Query(ge=1, le=100)] = 20,
+    offset: Annotated[int, Query(ge=0)] = 0,
+) -> dict:
+    """Return paginated report history with optional filters."""
     try:
-        reports = get_all_reports()
-        return {"reports": reports, "total": len(reports)}
+        return query_reports(
+            q=q,
+            recommendation=recommendation,
+            risk_level=risk_level,
+            sort=sort,
+            limit=limit,
+            offset=offset,
+        )
     except Exception as exc:
         raise HTTPException(status_code=500, detail=str(exc)) from exc
 
