@@ -15,9 +15,17 @@ if not exist "%ROOT%\run-frontend.cmd" (
 )
 
 echo Launching AgriPulse backend and frontend in separate terminals...
-start "AgriPulse Backend" cmd /k "\"%ROOT%\run-backend.cmd\""
-timeout /t 2 >nul
-start "AgriPulse Frontend" cmd /k "\"%ROOT%\run-frontend.cmd\""
+
+where powershell.exe >nul 2>nul
+if %ERRORLEVEL% EQU 0 (
+  powershell -NoProfile -Command "Start-Process -FilePath 'cmd.exe' -ArgumentList '/k','call ""%ROOT%\run-backend.cmd""' -WindowStyle Normal" >nul 2>nul
+  timeout /t 2 >nul
+  powershell -NoProfile -Command "Start-Process -FilePath 'cmd.exe' -ArgumentList '/k','call ""%ROOT%\run-frontend.cmd""' -WindowStyle Normal" >nul 2>nul
+) else (
+  start "AgriPulse Backend" cmd /k call "%ROOT%\run-backend.cmd"
+  timeout /t 2 >nul
+  start "AgriPulse Frontend" cmd /k call "%ROOT%\run-frontend.cmd"
+)
 
 echo.
 echo Backend : http://127.0.0.1:9877/docs

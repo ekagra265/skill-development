@@ -6,10 +6,10 @@ if "%ROOT:~-1%"=="\" set "ROOT=%ROOT:~0,-1%"
 
 set "VENV_PYTHON=%ROOT%\.venv311\Scripts\python.exe"
 set "BACKEND_DIR=%ROOT%\backend"
-set "BACKEND_HOST=127.0.0.1"
-set "BACKEND_PORT=9877"
 set "ENV_FILE=%ROOT%\.env.local"
 set "UVICORN_RELOAD="
+if not defined BACKEND_HOST set "BACKEND_HOST=127.0.0.1"
+if not defined BACKEND_PORT set "BACKEND_PORT=9877"
 
 if exist "%ENV_FILE%" (
   for /f "usebackq tokens=1,* delims==" %%A in ("%ENV_FILE%") do (
@@ -40,6 +40,21 @@ if not exist "%VENV_PYTHON%" (
 if not exist "%BACKEND_DIR%\app\main.py" (
   echo [ERROR] Backend app not found at "%BACKEND_DIR%\app\main.py"
   exit /b 1
+)
+
+set "BACKEND_PORT_PID="
+for /f "tokens=2,5" %%A in ('netstat -ano ^| findstr LISTENING ^| findstr /C:":%BACKEND_PORT%"') do (
+  set "BACKEND_PORT_PID=%%B"
+)
+
+if defined BACKEND_PORT_PID (
+  echo [INFO] Port %BACKEND_PORT% is already in use by PID %BACKEND_PORT_PID%.
+  echo If AgriPulse backend is already running, open:
+  echo   http://%BACKEND_HOST%:%BACKEND_PORT%/docs
+  echo.
+  echo To free the port, run:
+  echo   taskkill /PID %BACKEND_PORT_PID% /F
+  exit /b 0
 )
 
 pushd "%BACKEND_DIR%" || exit /b 1

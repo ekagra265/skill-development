@@ -32,6 +32,21 @@ if not exist "%ROOT%\node_modules" (
   exit /b 1
 )
 
+set "FRONTEND_PORT_PID="
+for /f "tokens=2,5" %%A in ('netstat -ano ^| findstr LISTENING ^| findstr /C:":%PORT%"') do (
+  set "FRONTEND_PORT_PID=%%B"
+)
+
+if defined FRONTEND_PORT_PID (
+  echo [INFO] Port %PORT% is already in use by PID %FRONTEND_PORT_PID%.
+  echo If AgriPulse frontend is already running, open:
+  echo   http://%HOSTNAME%:%PORT%
+  echo.
+  echo To free the port, run:
+  echo   taskkill /PID %FRONTEND_PORT_PID% /F
+  exit /b 0
+)
+
 where pnpm.cmd >nul 2>nul
 if %ERRORLEVEL% EQU 0 (
   pushd "%ROOT%" || exit /b 1
