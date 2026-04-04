@@ -38,6 +38,7 @@ def create_access_token(
     role: str,
     secret_key: str,
     expires_minutes: int,
+    token_type: str = "access",
 ) -> tuple[str, int]:
     issued_at = int(time.time())
     expires_at = issued_at + max(1, int(expires_minutes)) * 60
@@ -45,6 +46,7 @@ def create_access_token(
     payload = {
         "sub": username,
         "role": role,
+        "token_type": token_type,
         "iat": issued_at,
         "exp": expires_at,
     }

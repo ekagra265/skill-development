@@ -19,7 +19,7 @@ AgriPulse is a crop-market intelligence app with:
 - Automatic fallback to baseline when Prophet runtime fails
 - Metadata endpoint cache (TTL) for better responsiveness
 - Forecast endpoint cache (short TTL) for faster repeated requests
-- JWT login for report APIs (`/auth/login`, `/auth/me`)
+- DB-backed auth with hashed passwords and refresh-token rotation
 - Per-user report history/download/delete scoped to authenticated user
 
 ## Quick run (Windows)
@@ -92,6 +92,11 @@ Important keys:
 - `AGRIPULSE_PRICE_SOURCE` (`local_csv` recommended for local development)
 - `AGRIPULSE_REPORTS_DB_PATH` (optional custom SQLite path)
 - `AGRIPULSE_AUTH_ENABLED` (`1` enables JWT protection for report APIs)
+- `AGRIPULSE_AUTH_DB_PATH` (optional custom SQLite path for users/tokens)
+- `AGRIPULSE_AUTH_ALLOW_SIGNUP` (`1` allows `/auth/register`)
+- `AGRIPULSE_AUTH_PASSWORD_MIN_LENGTH` (minimum password size for new users)
+- `AGRIPULSE_AUTH_REFRESH_TOKEN_EXP_DAYS` (refresh token lifetime)
+- `AGRIPULSE_AUTH_BOOTSTRAP_DEMO_USER` (`1` seeds admin if missing)
 - `AGRIPULSE_AUTH_DEMO_USERNAME` / `AGRIPULSE_AUTH_DEMO_PASSWORD` (demo login credentials)
 
 ## Docker
@@ -124,7 +129,10 @@ pnpm lint
 - `GET /metadata`
 - `POST /forecast`
 - `GET /best-mandi`
+- `POST /auth/register`
 - `POST /auth/login`
+- `POST /auth/refresh`
+- `POST /auth/logout`
 - `GET /auth/me`
 - `POST /reports/save`
 - `GET /reports/history`
@@ -136,5 +144,5 @@ pnpm lint
 1. Replace in-memory metadata cache with Redis for multi-instance deployments.
 2. Move report storage from SQLite to PostgreSQL.
 3. Add background jobs for scheduled forecast generation.
-4. Add DB-backed users (hashed passwords + refresh tokens) instead of demo credentials.
+4. Add role-based authorization for admin-only endpoints.
 5. Add CI workflow for backend tests + frontend type checks on every push.

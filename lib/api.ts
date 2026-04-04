@@ -55,8 +55,10 @@ export type AuthUser = {
 
 export type LoginResponse = {
   access_token: string;
+  refresh_token: string;
   token_type: "bearer";
   expires_in: number;
+  refresh_expires_in: number;
   user: AuthUser;
 };
 
@@ -67,6 +69,7 @@ const METADATA_TIMEOUT_MS = 8_000;
 const FORECAST_TIMEOUT_MS = 30_000;
 const DEFAULT_TIMEOUT_MS = 12_000;
 const ACCESS_TOKEN_KEY = "agripulse_access_token";
+const REFRESH_TOKEN_KEY = "agripulse_refresh_token";
 
 const metadataCache = new Map<string, { ts: number; data: MetadataResponse }>();
 const metadataInflight = new Map<string, Promise<MetadataResponse>>();
@@ -88,6 +91,11 @@ function getAccessTokenFromStorage(): string {
   return window.localStorage.getItem(ACCESS_TOKEN_KEY) ?? "";
 }
 
+function getRefreshTokenFromStorage(): string {
+  if (typeof window === "undefined") return "";
+  return window.localStorage.getItem(REFRESH_TOKEN_KEY) ?? "";
+}
+
 function buildReportHeaders(json = false): HeadersInit {
   const token = getAccessTokenFromStorage().trim();
   const headers: Record<string, string> = {};
@@ -104,13 +112,30 @@ export function storeAccessToken(token: string): void {
   window.localStorage.setItem(ACCESS_TOKEN_KEY, clean);
 }
 
+function storeRefreshToken(token: string): void {
+  if (typeof window === "undefined") return;
+  const clean = token.trim();
+  if (!clean) return;
+  window.localStorage.setItem(REFRESH_TOKEN_KEY, clean);
+}
+
+function storeAuthTokens(payload: LoginResponse): void {
+  storeAccessToken(payload.access_token);
+  storeRefreshToken(payload.refresh_token);
+}
+
 export function clearAccessToken(): void {
   if (typeof window === "undefined") return;
   window.localStorage.removeItem(ACCESS_TOKEN_KEY);
+  window.localStorage.removeItem(REFRESH_TOKEN_KEY);
 }
 
 export function hasAccessToken(): boolean {
   return Boolean(getAccessTokenFromStorage().trim());
+}
+
+function hasRefreshToken(): boolean {
+  return Boolean(getRefreshTokenFromStorage().trim());
 }
 
 async function readError(res: Response, fallback: string): Promise<never> {
@@ -139,6 +164,45 @@ async function fetchWithTimeout(
   } finally {
     clearTimeout(timeoutHandle);
   }
+}
+
+async function refreshAccessToken(): Promise<void> {
+  const refreshToken = getRefreshTokenFromStorage().trim();
+  if (!refreshToken) {
+    throw new Error("Missing refresh token.");
+  }
+
+  const res = await fetchWithTimeout(
+    `${API_BASE_URL}/auth/refresh`,
+    {
+      method: "POST",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify({ refresh_token: refreshToken }),
+    },
+    DEFAULT_TIMEOUT_MS
+  );
+  if (!res.ok) {
+    clearAccessToken();
+    return readError(res, "Session refresh failed");
+  }
+  const payload = (await res.json()) as LoginResponse;
+  storeAuthTokens(payload);
+}
+
+async function fetchWithAuthRetry(
+  makeRequest: () => Promise<Response>
+): Promise<Response> {
+  let res = await makeRequest();
+  if (res.status !== 401 || !hasRefreshToken()) {
+    return res;
+  }
+  try {
+    await refreshAccessToken();
+  } catch {
+    return res;
+  }
+  res = await makeRequest();
+  return res;
 }
 
 export async function fetchForecast(
@@ -240,14 +304,16 @@ export async function fetchBestMandi(
 export async function saveReport(
   forecastData: ForecastResponse
 ): Promise<{ success: boolean; report_id: string }> {
-  const res = await fetchWithTimeout(
-    `${API_BASE_URL}/reports/save`,
-    {
-      method: "POST",
-      headers: buildReportHeaders(true),
-      body: JSON.stringify(forecastData),
-    },
-    DEFAULT_TIMEOUT_MS
+  const res = await fetchWithAuthRetry(() =>
+    fetchWithTimeout(
+      `${API_BASE_URL}/reports/save`,
+      {
+        method: "POST",
+        headers: buildReportHeaders(true),
+        body: JSON.stringify(forecastData),
+      },
+      DEFAULT_TIMEOUT_MS
+    )
   );
   if (!res.ok) {
     return readError(res, "Failed to save report");
@@ -271,10 +337,12 @@ export async function fetchReportHistory(
   }
   const path = query.toString() ? `/reports/history?${query}` : "/reports/history";
 
-  const res = await fetchWithTimeout(
-    `${API_BASE_URL}${path}`,
-    { headers: buildReportHeaders(false) },
-    DEFAULT_TIMEOUT_MS
+  const res = await fetchWithAuthRetry(() =>
+    fetchWithTimeout(
+      `${API_BASE_URL}${path}`,
+      { headers: buildReportHeaders(false) },
+      DEFAULT_TIMEOUT_MS
+    )
   );
   if (!res.ok) {
     return readError(res, "Failed to fetch report history");
@@ -295,13 +363,15 @@ export function getReportDownloadUrl(reportId: string): string {
 }
 
 export async function deleteReport(reportId: string): Promise<void> {
-  const res = await fetchWithTimeout(
-    `${API_BASE_URL}/reports/${reportId}`,
-    {
-      method: "DELETE",
-      headers: buildReportHeaders(false),
-    },
-    DEFAULT_TIMEOUT_MS
+  const res = await fetchWithAuthRetry(() =>
+    fetchWithTimeout(
+      `${API_BASE_URL}/reports/${reportId}`,
+      {
+        method: "DELETE",
+        headers: buildReportHeaders(false),
+      },
+      DEFAULT_TIMEOUT_MS
+    )
   );
   if (!res.ok) {
     return readError(res, "Failed to delete report");
@@ -325,24 +395,70 @@ export async function login(
     return readError(res, "Login failed");
   }
   const payload = (await res.json()) as LoginResponse;
-  storeAccessToken(payload.access_token);
+  storeAuthTokens(payload);
+  return payload;
+}
+
+export async function register(
+  username: string,
+  password: string
+): Promise<LoginResponse> {
+  const res = await fetchWithTimeout(
+    `${API_BASE_URL}/auth/register`,
+    {
+      method: "POST",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify({ username, password }),
+    },
+    DEFAULT_TIMEOUT_MS
+  );
+  if (!res.ok) {
+    return readError(res, "Registration failed");
+  }
+  const payload = (await res.json()) as LoginResponse;
+  storeAuthTokens(payload);
   return payload;
 }
 
 export async function fetchCurrentUser(): Promise<AuthUser> {
-  const token = getAccessTokenFromStorage().trim();
+  let token = getAccessTokenFromStorage().trim();
+  if (!token && hasRefreshToken()) {
+    await refreshAccessToken();
+    token = getAccessTokenFromStorage().trim();
+  }
   if (!token) {
     throw new Error("Missing bearer token.");
   }
-  const res = await fetchWithTimeout(
-    `${API_BASE_URL}/auth/me`,
-    {
-      headers: { Authorization: `Bearer ${token}` },
-    },
-    DEFAULT_TIMEOUT_MS
+  const res = await fetchWithAuthRetry(() =>
+    fetchWithTimeout(
+      `${API_BASE_URL}/auth/me`,
+      {
+        headers: { Authorization: `Bearer ${getAccessTokenFromStorage().trim()}` },
+      },
+      DEFAULT_TIMEOUT_MS
+    )
   );
   if (!res.ok) {
     return readError(res, "Failed to fetch current user");
   }
   return (await res.json()) as AuthUser;
+}
+
+export async function logout(): Promise<void> {
+  const refreshToken = getRefreshTokenFromStorage().trim();
+  try {
+    if (refreshToken) {
+      await fetchWithTimeout(
+        `${API_BASE_URL}/auth/logout`,
+        {
+          method: "POST",
+          headers: { "Content-Type": "application/json" },
+          body: JSON.stringify({ refresh_token: refreshToken }),
+        },
+        DEFAULT_TIMEOUT_MS
+      );
+    }
+  } finally {
+    clearAccessToken();
+  }
 }

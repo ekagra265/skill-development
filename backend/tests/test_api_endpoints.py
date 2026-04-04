@@ -225,6 +225,14 @@ class ApiEndpointIntegrationTests(unittest.TestCase):
                 "path": "data/reports.db",
                 "total_reports": 0,
             },
+        ), patch(
+            "app.main.get_auth_store_status",
+            return_value={
+                "backend": "sqlite",
+                "path": "data/auth.db",
+                "total_users": 1,
+                "active_refresh_tokens": 0,
+            },
         ):
             response = self.client.get("/health")
 
@@ -232,6 +240,7 @@ class ApiEndpointIntegrationTests(unittest.TestCase):
         payload = response.json()
         self.assertEqual(payload["status"], "ok")
         self.assertIn("report_store", payload)
+        self.assertIn("auth_store", payload)
         self.assertEqual(payload["report_store"]["backend"], "sqlite")
         self.assertIn("forecast_cache", payload)
 

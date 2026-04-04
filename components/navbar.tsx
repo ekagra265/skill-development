@@ -3,7 +3,7 @@
 import { useEffect, useState } from "react";
 import { Menu, X, Sprout, LayoutDashboard } from "lucide-react";
 import Link from "next/link";
-import { clearAccessToken, hasAccessToken } from "@/lib/api";
+import { hasAccessToken, logout } from "@/lib/api";
 
 const navLinks = [
   { label: "Forecast", href: "/forecast" },
@@ -21,8 +21,8 @@ export function Navbar() {
     setLoggedIn(hasAccessToken());
   }, []);
 
-  function handleLogout() {
-    clearAccessToken();
+  async function handleLogout() {
+    await logout();
     setLoggedIn(false);
     if (typeof window !== "undefined") {
       window.location.href = "/login";
@@ -74,12 +74,14 @@ export function Navbar() {
             Login
           </Link>
           {loggedIn && (
-            <button
-              onClick={handleLogout}
-              className="ml-1 rounded-lg border border-destructive/30 bg-destructive/5 px-3 py-2 text-sm font-medium text-destructive transition-colors hover:bg-destructive/10"
-            >
-              Logout
-            </button>
+              <button
+                onClick={() => {
+                  void handleLogout();
+                }}
+                className="ml-1 rounded-lg border border-destructive/30 bg-destructive/5 px-3 py-2 text-sm font-medium text-destructive transition-colors hover:bg-destructive/10"
+              >
+                Logout
+              </button>
           )}
         </nav>
 
@@ -133,7 +135,7 @@ export function Navbar() {
               <button
                 onClick={() => {
                   setOpen(false);
-                  handleLogout();
+                  void handleLogout();
                 }}
                 className="rounded-lg border border-destructive/30 bg-destructive/5 px-4 py-2.5 text-sm font-medium text-destructive"
               >

@@ -27,6 +27,7 @@ from app.services.crop_prices import (
     get_unique_commodities,
     get_unique_states,
 )
+from app.services.auth_storage import get_auth_store_status
 from app.services.report_storage import get_report_store_status
 
 # ── NEW: import reports router ─────────────────────────────────────────────────
@@ -192,6 +193,7 @@ def root() -> RedirectResponse:
 @app.get("/health")
 def health() -> dict:
     report_store = get_report_store_status()
+    auth_store = get_auth_store_status()
     with _forecast_cache_lock:
         forecast_cache_status = {
             "ttl_sec": _FORECAST_CACHE_TTL_SEC,
@@ -206,6 +208,7 @@ def health() -> dict:
         "auth_enabled": settings.auth_enabled,
         "price_source": settings.price_source,
         "report_store": report_store,
+        "auth_store": auth_store,
         "forecast_cache": forecast_cache_status,
     }
 

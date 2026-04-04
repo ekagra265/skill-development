@@ -41,6 +41,19 @@ class LoginRequest(BaseModel):
     password: str
 
 
+class RegisterRequest(BaseModel):
+    username: str
+    password: str
+
+
+class RefreshTokenRequest(BaseModel):
+    refresh_token: str
+
+
+class LogoutRequest(BaseModel):
+    refresh_token: str
+
+
 class AuthenticatedUser(BaseModel):
     username: str
     role: str
@@ -48,9 +61,15 @@ class AuthenticatedUser(BaseModel):
 
 class LoginResponse(BaseModel):
     access_token: str
+    refresh_token: str
     token_type: Literal["bearer"] = "bearer"
     expires_in: int
+    refresh_expires_in: int
     user: AuthenticatedUser
+
+
+class LogoutResponse(BaseModel):
+    success: bool
 
 
 class ForecastResponse(BaseModel):

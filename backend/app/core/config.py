@@ -88,6 +88,31 @@ class Settings(BaseModel):
     auth_token_exp_minutes: int = Field(
         default_factory=lambda: int(os.getenv("AGRIPULSE_AUTH_TOKEN_EXP_MINUTES", "720"))
     )
+    auth_refresh_token_exp_days: int = Field(
+        default_factory=lambda: int(
+            os.getenv("AGRIPULSE_AUTH_REFRESH_TOKEN_EXP_DAYS", "30")
+        )
+    )
+    auth_db_path: str = Field(
+        default_factory=lambda: os.getenv("AGRIPULSE_AUTH_DB_PATH", "")
+    )
+    auth_allow_signup: bool = Field(
+        default_factory=lambda: os.getenv("AGRIPULSE_AUTH_ALLOW_SIGNUP", "1")
+        .strip()
+        .lower()
+        in {"1", "true", "yes", "on"}
+    )
+    auth_password_min_length: int = Field(
+        default_factory=lambda: int(
+            os.getenv("AGRIPULSE_AUTH_PASSWORD_MIN_LENGTH", "8")
+        )
+    )
+    auth_bootstrap_demo_user: bool = Field(
+        default_factory=lambda: os.getenv("AGRIPULSE_AUTH_BOOTSTRAP_DEMO_USER", "1")
+        .strip()
+        .lower()
+        in {"1", "true", "yes", "on"}
+    )
     auth_demo_username: str = Field(
         default_factory=lambda: os.getenv("AGRIPULSE_AUTH_DEMO_USERNAME", "admin")
     )

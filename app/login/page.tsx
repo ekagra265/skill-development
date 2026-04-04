@@ -4,20 +4,23 @@ import { FormEvent, useState } from "react";
 import Link from "next/link";
 import { Loader2, LockKeyhole, LogIn } from "lucide-react";
 
-import { fetchCurrentUser, hasAccessToken, login } from "@/lib/api";
+import { fetchCurrentUser, hasAccessToken, login, register } from "@/lib/api";
 import { Navbar } from "@/components/navbar";
 import { Footer } from "@/components/footer";
 
 export default function LoginPage() {
   const [username, setUsername] = useState("admin");
   const [password, setPassword] = useState("admin123");
-  const [loading, setLoading] = useState(false);
+  const [loadingAction, setLoadingAction] = useState<
+    "login" | "register" | "verify" | null
+  >(null);
   const [message, setMessage] = useState("");
   const [error, setError] = useState("");
+  const loading = loadingAction !== null;
 
   async function handleSubmit(event: FormEvent<HTMLFormElement>) {
     event.preventDefault();
-    setLoading(true);
+    setLoadingAction("login");
     setError("");
     setMessage("");
     try {
@@ -28,12 +31,12 @@ export default function LoginPage() {
     } catch (err) {
       setError(err instanceof Error ? err.message : "Login failed.");
     } finally {
-      setLoading(false);
+      setLoadingAction(null);
     }
   }
 
   async function verifySession() {
-    setLoading(true);
+    setLoadingAction("verify");
     setError("");
     setMessage("");
     try {
@@ -42,7 +45,23 @@ export default function LoginPage() {
     } catch (err) {
       setError(err instanceof Error ? err.message : "Session check failed.");
     } finally {
-      setLoading(false);
+      setLoadingAction(null);
+    }
+  }
+
+  async function handleRegister() {
+    setLoadingAction("register");
+    setError("");
+    setMessage("");
+    try {
+      const response = await register(username, password);
+      setMessage(
+        `Account created for ${response.user.username}. You are now signed in.`
+      );
+    } catch (err) {
+      setError(err instanceof Error ? err.message : "Registration failed.");
+    } finally {
+      setLoadingAction(null);
     }
   }
 
@@ -98,13 +117,30 @@ export default function LoginPage() {
                 {loading ? (
                   <>
                     <Loader2 className="h-4 w-4 animate-spin" />
-                    Signing in...
+                    {loadingAction === "login" ? "Signing in..." : "Working..."}
                   </>
                 ) : (
                   <>
                     <LogIn className="h-4 w-4" />
                     Sign In
                   </>
+                )}
+              </button>
+              <button
+                type="button"
+                onClick={handleRegister}
+                disabled={loading}
+                className="inline-flex w-full items-center justify-center gap-2 rounded-lg border border-border bg-card px-4 py-2.5 text-sm font-semibold text-foreground transition-colors hover:bg-secondary disabled:opacity-60"
+              >
+                {loading ? (
+                  <>
+                    <Loader2 className="h-4 w-4 animate-spin" />
+                    {loadingAction === "register"
+                      ? "Creating account..."
+                      : "Working..."}
+                  </>
+                ) : (
+                  "Create Account"
                 )}
               </button>
             </form>
