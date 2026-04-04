@@ -1,5 +1,6 @@
 from __future__ import annotations
 
+from collections import defaultdict
 from datetime import date, datetime
 from functools import lru_cache
 from importlib import import_module
@@ -324,6 +325,77 @@ def _load_rows() -> list[dict[str, Any]]:
     return rows
 
 
+@lru_cache(maxsize=1)
+def _build_indexes() -> dict[str, Any]:
+    rows = _load_rows()
+
+    unique_states: set[str] = set()
+    unique_commodities: set[str] = set()
+    states_by_market_raw: dict[str, set[str]] = defaultdict(set)
+    markets_by_commodity_raw: dict[str, set[str]] = defaultdict(set)
+
+    rows_by_commodity: dict[str, list[dict[str, Any]]] = defaultdict(list)
+    rows_by_commodity_market: dict[tuple[str, str], list[dict[str, Any]]] = defaultdict(list)
+    rows_by_commodity_state: dict[tuple[str, str], list[dict[str, Any]]] = defaultdict(list)
+    rows_by_commodity_market_state: dict[
+        tuple[str, str, str], list[dict[str, Any]]
+    ] = defaultdict(list)
+
+    for row in rows:
+        commodity = str(row.get("Commodity", "")).strip()
+        market = str(row.get("Market", "")).strip()
+        state = str(row.get("State", "")).strip()
+        if not commodity:
+            continue
+
+        commodity_norm = _norm(commodity)
+        market_norm = _norm(market)
+        state_norm = _norm(state)
+
+        unique_commodities.add(commodity)
+        if state:
+            unique_states.add(state)
+
+        rows_by_commodity[commodity_norm].append(row)
+        if market:
+            rows_by_commodity_market[(commodity_norm, market_norm)].append(row)
+            markets_by_commodity_raw[commodity_norm].add(market)
+        if state:
+            rows_by_commodity_state[(commodity_norm, state_norm)].append(row)
+        if market and state:
+            rows_by_commodity_market_state[(commodity_norm, market_norm, state_norm)].append(row)
+            states_by_market_raw[market_norm].add(state)
+
+    for mapping in (
+        rows_by_commodity,
+        rows_by_commodity_market,
+        rows_by_commodity_state,
+        rows_by_commodity_market_state,
+    ):
+        for key in mapping:
+            mapping[key].sort(key=lambda row: row["Date"])
+
+    states_by_market = {
+        market_norm: tuple(sorted(states))
+        for market_norm, states in states_by_market_raw.items()
+    }
+    markets_by_commodity = {
+        commodity_norm: tuple(sorted(markets))
+        for commodity_norm, markets in markets_by_commodity_raw.items()
+    }
+
+    return {
+        "unique_states": tuple(sorted(unique_states)),
+        "unique_commodities": tuple(sorted(unique_commodities)),
+        "states_by_market": states_by_market,
+        "markets_by_commodity": markets_by_commodity,
+        "rows_by_commodity": rows_by_commodity,
+        "rows_by_commodity_market": rows_by_commodity_market,
+        "rows_by_commodity_state": rows_by_commodity_state,
+        "rows_by_commodity_market_state": rows_by_commodity_market_state,
+    }
+
+
 def get_rows_source_info() -> dict[str, str | None]:
     # Ensure data is loaded at least once so source info is meaningful.
     _load_rows()
@@ -338,44 +410,23 @@ def resolve_state_for_market(market: str) -> str | None:
     if not market_norm:
         return None
 
-    states = {
-        str(row.get("State", "")).strip()
-        for row in _load_rows()
-        if _norm(str(row.get("Market", ""))) == market_norm
-    }
-    states.discard("")
+    states = set(_build_indexes()["states_by_market"].get(market_norm, ()))
     if len(states) == 1:
         return next(iter(states))
     return None
 
 
 def get_unique_states() -> list[str]:
-    states = {
-        str(row.get("State", "")).strip()
-        for row in _load_rows()
-    }
-    states.discard("")
-    return sorted(states)
+    return list(_build_indexes()["unique_states"])
 
 
 def get_unique_commodities() -> list[str]:
-    commodities = {
-        str(row.get("Commodity", "")).strip()
-        for row in _load_rows()
-    }
-    commodities.discard("")
-    return sorted(commodities)
+    return list(_build_indexes()["unique_commodities"])
 
 
 def get_markets_for_commodity(commodity: str) -> list[str]:
     commodity_norm = _norm(commodity)
-    markets = {
-        str(row.get("Market", "")).strip()
-        for row in _load_rows()
-        if _norm(str(row.get("Commodity", ""))) == commodity_norm
-    }
-    markets.discard("")
-    return sorted(markets)
+    return list(_build_indexes()["markets_by_commodity"].get(commodity_norm, ()))
 
 
 def _to_iso_date(value: Any) -> str | None:
@@ -390,22 +441,13 @@ def _to_iso_date(value: Any) -> str | None:
 
 def get_latest_crop_prices(limit: int = 50) -> list[dict[str, Any]]:
     safe_limit = max(1, int(limit))
-    rows = _load_rows()
+    indexes = _build_indexes()
+    rows_by_commodity = indexes["rows_by_commodity"]
     result: list[dict[str, Any]] = []
-    commodities = sorted(
-        {
-            str(row.get("Commodity", "")).strip()
-            for row in rows
-            if str(row.get("Commodity", "")).strip()
-        }
-    )
+    commodities = list(indexes["unique_commodities"])
 
     for commodity in commodities:
-        commodity_rows = [
-            row
-            for row in rows
-            if _norm(str(row.get("Commodity", ""))) == _norm(commodity)
-        ]
+        commodity_rows = rows_by_commodity.get(_norm(commodity), [])
         if not commodity_rows:
             continue
 
@@ -461,32 +503,30 @@ def load_prophet_history(
     market: str,
     commodity: str,
 ) -> list[dict[str, Any]]:
+    indexes = _build_indexes()
     state_norm = _norm(state)
     market_norm = _norm(market)
     commodity_norm = _norm(commodity)
 
-    filtered = [
-        row
-        for row in _load_rows()
-        if _norm(str(row.get("Commodity", ""))) == commodity_norm
-        and _norm(str(row.get("Market", ""))) == market_norm
-        and (not state_norm or _norm(str(row.get("State", ""))) == state_norm)
-    ]
-    if not filtered and state_norm and market_norm:
-        filtered = [
-            row
-            for row in _load_rows()
-            if _norm(str(row.get("Commodity", ""))) == commodity_norm
-            and _norm(str(row.get("State", ""))) == state_norm
-        ]
-    if not filtered:
-        filtered = [
-            row
-            for row in _load_rows()
-            if _norm(str(row.get("Commodity", ""))) == commodity_norm
-        ]
+    if state_norm:
+        filtered = list(
+            indexes["rows_by_commodity_market_state"].get(
+                (commodity_norm, market_norm, state_norm),
+                [],
+            )
+        )
+        if not filtered and market_norm:
+            filtered = list(
+                indexes["rows_by_commodity_state"].get((commodity_norm, state_norm), [])
+            )
+    else:
+        filtered = list(
+            indexes["rows_by_commodity_market"].get((commodity_norm, market_norm), [])
+        )
 
-    filtered.sort(key=lambda row: row["Date"])
+    if not filtered:
+        filtered = list(indexes["rows_by_commodity"].get(commodity_norm, []))
+
     formatted: list[dict[str, Any]] = []
     for row in filtered:
         ds_value = row["Date"]

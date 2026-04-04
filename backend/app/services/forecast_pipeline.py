@@ -7,7 +7,7 @@ from app.core.logger import logger
 from app.schemas import ForecastRequest
 from app.services.alerts import detect_price_shock
 from app.services.crop_prices import load_prophet_history, resolve_state_for_market
-from app.services.forecast_model import run_prophet_forecast
+from app.services.forecast_model import run_baseline_forecast, run_prophet_forecast
 from app.services.insights import generate_insights
 from app.services.mandi_lookup import get_nearby_mandis
 from app.services.recommendation import generate_recommendation
@@ -33,7 +33,6 @@ class ForecastPipelineResult(TypedDict):
 def run_forecast_pipeline(payload: ForecastRequest) -> ForecastPipelineResult:
     lang = payload.language or "en"
 
-    # ── 1. Load historical data ──────────────────────────────────────────────
     try:
         state = resolve_state_for_market(payload.mandi)
         prophet_history = load_prophet_history(
@@ -50,38 +49,49 @@ def run_forecast_pipeline(payload: ForecastRequest) -> ForecastPipelineResult:
         raise DataNotFoundError(
             f"No historical data found for commodity='{payload.crop}' and market='{payload.mandi}'."
         )
-    if len(prophet_history) < 30:
-        raise ForecastError(
-            f"At least 30 history rows are required; found {len(prophet_history)}."
-        )
 
-    # ── 2. Run Prophet forecast ──────────────────────────────────────────────
+    using_baseline = len(prophet_history) < 30
     try:
-        forecast_points = run_prophet_forecast(history=prophet_history, periods=payload.days)
+        if using_baseline:
+            forecast_points = run_baseline_forecast(
+                history=prophet_history,
+                periods=payload.days,
+            )
+            logger.warning(
+                "Using baseline forecast due to limited history | crop=%s | mandi=%s | rows=%s",
+                payload.crop,
+                payload.mandi,
+                len(prophet_history),
+            )
+        else:
+            forecast_points = run_prophet_forecast(
+                history=prophet_history,
+                periods=payload.days,
+            )
     except (RuntimeError, ValueError) as exc:
         raise ForecastError(str(exc)) from exc
 
-    # ── 3. Generate recommendation (bilingual) ───────────────────────────────
     try:
         recommendation = generate_recommendation(forecast_points, language=lang)
     except ValueError as exc:
         raise RecommendationError(str(exc)) from exc
 
-    # ── 4. Risk analysis + insights ──────────────────────────────────────────
     try:
         risk_info = calculate_confidence_and_risk(forecast_points)
+        if using_baseline:
+            risk_info["confidence"] = min(int(risk_info.get("confidence", 0)), 45)
+            risk_info["risk_level"] = "HIGH"
         recommendation.update(risk_info)
         insight_info = generate_insights(forecast_points, recommendation, language=lang)
     except ValueError as exc:
         raise ForecastError(str(exc)) from exc
 
-    # ── 5. Assemble result ───────────────────────────────────────────────────
-    history_values   = [point["y"] for point in prophet_history]
-    current_price    = history_values[-1]
-    expected_change  = float(recommendation["expected_change_percent"])
+    history_values = [point["y"] for point in prophet_history]
+    current_price = history_values[-1]
+    expected_change = float(recommendation["expected_change_percent"])
 
     volatility_level = classify_volatility(history_values)
-    shock_alert      = detect_price_shock(history_values, language=lang)
+    shock_alert = detect_price_shock(history_values, language=lang)
     nearby = get_nearby_mandis(
         market=payload.mandi,
         commodity=payload.crop,
