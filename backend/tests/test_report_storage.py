@@ -10,6 +10,8 @@ from app.services import report_storage
 
 
 class ReportStorageTests(unittest.TestCase):
+    OWNER = "alice"
+
     def setUp(self) -> None:
         self.temp_dir = TemporaryDirectory(ignore_cleanup_errors=True)
         self.db_path = Path(self.temp_dir.name) / "reports.db"
@@ -68,21 +70,23 @@ class ReportStorageTests(unittest.TestCase):
         return payload
 
     def test_save_get_and_delete_report(self) -> None:
-        report_id = report_storage.save_report(self._sample_payload())
+        report_id = report_storage.save_report(self._sample_payload(), owner_username=self.OWNER)
         self.assertEqual(len(report_id), 8)
 
-        reports = report_storage.get_all_reports()
+        reports = report_storage.get_all_reports(owner_username=self.OWNER)
         self.assertEqual(len(reports), 1)
         self.assertEqual(reports[0]["id"], report_id)
+        self.assertEqual(reports[0]["owner_username"], self.OWNER)
 
-        fetched = report_storage.get_report_by_id(report_id)
+        fetched = report_storage.get_report_by_id(report_id, owner_username=self.OWNER)
         self.assertIsNotNone(fetched)
         self.assertEqual(fetched["crop"], "Wheat")
+        self.assertEqual(fetched["owner_username"], self.OWNER)
 
-        deleted = report_storage.delete_report_by_id(report_id)
+        deleted = report_storage.delete_report_by_id(report_id, owner_username=self.OWNER)
         self.assertTrue(deleted)
-        self.assertIsNone(report_storage.get_report_by_id(report_id))
-        self.assertEqual(report_storage.get_all_reports(), [])
+        self.assertIsNone(report_storage.get_report_by_id(report_id, owner_username=self.OWNER))
+        self.assertEqual(report_storage.get_all_reports(owner_username=self.OWNER), [])
 
     def test_legacy_json_migration_on_first_init(self) -> None:
         legacy_reports = [
@@ -114,6 +118,7 @@ class ReportStorageTests(unittest.TestCase):
         reports = report_storage.get_all_reports()
         self.assertEqual(len(reports), 1)
         self.assertEqual(reports[0]["id"], "legacy01")
+        self.assertEqual(reports[0]["owner_username"], "legacy")
 
         status = report_storage.get_report_store_status()
         self.assertEqual(status["backend"], "sqlite")
@@ -128,7 +133,8 @@ class ReportStorageTests(unittest.TestCase):
                 recommendation_action="WAIT",
                 recommendation_risk="HIGH",
                 recommendation_confidence=42,
-            )
+            ),
+            owner_username=self.OWNER,
         )
         report_storage.save_report(
             self._payload_with(
@@ -138,7 +144,8 @@ class ReportStorageTests(unittest.TestCase):
                 recommendation_action="SELL NOW",
                 recommendation_risk="MEDIUM",
                 recommendation_confidence=65,
-            )
+            ),
+            owner_username=self.OWNER,
         )
         report_storage.save_report(
             self._payload_with(
@@ -148,10 +155,12 @@ class ReportStorageTests(unittest.TestCase):
                 recommendation_action="HOLD",
                 recommendation_risk="LOW",
                 recommendation_confidence=55,
-            )
+            ),
+            owner_username="bob",
         )
 
         filtered = report_storage.query_reports(
+            owner_username=self.OWNER,
             q="to",
             recommendation="SELL NOW",
             risk_level="MEDIUM",
@@ -161,10 +170,24 @@ class ReportStorageTests(unittest.TestCase):
         )
         self.assertEqual(filtered["total"], 1)
         self.assertEqual(filtered["reports"][0]["crop"], "Tomato")
+        self.assertEqual(filtered["reports"][0]["owner_username"], self.OWNER)
 
-        paged = report_storage.query_reports(sort="conf", limit=1, offset=1)
-        self.assertEqual(paged["total"], 3)
+        paged = report_storage.query_reports(
+            owner_username=self.OWNER,
+            sort="conf",
+            limit=1,
+            offset=1,
+        )
+        self.assertEqual(paged["total"], 2)
         self.assertEqual(len(paged["reports"]), 1)
+
+    def test_owner_scoping_blocks_cross_user_access(self) -> None:
+        report_id = report_storage.save_report(self._sample_payload(), owner_username=self.OWNER)
+
+        self.assertIsNone(report_storage.get_report_by_id(report_id, owner_username="bob"))
+        self.assertFalse(report_storage.delete_report_by_id(report_id, owner_username="bob"))
+
+        self.assertIsNotNone(report_storage.get_report_by_id(report_id, owner_username=self.OWNER))
 
 
 if __name__ == "__main__":

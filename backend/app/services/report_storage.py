@@ -28,6 +28,7 @@ _INIT_LOCK = Lock()
 _INITIALIZED = False
 _VALID_RECOMMENDATIONS = {"WAIT", "SELL NOW", "HOLD"}
 _VALID_RISK_LEVELS = {"LOW", "MEDIUM", "HIGH"}
+_LEGACY_OWNER = "legacy"
 
 
 def _ensure_parent(path: Path) -> None:
@@ -55,6 +56,13 @@ def _coerce_float(value: object, default: float = 0.0) -> float:
         return default
 
 
+def _normalize_owner(owner_username: str | None) -> str | None:
+    if owner_username is None:
+        return None
+    normalized = owner_username.strip()
+    return normalized or None
+
+
 def _extract_index_fields(report: dict) -> tuple[str, str, str, str, float, int]:
     recommendation = str(report.get("recommendation", "")).upper().strip()
     risk_level = str(report.get("risk_level", "")).upper().strip()
@@ -73,6 +81,7 @@ def _ensure_report_columns(conn: sqlite3.Connection) -> None:
         row["name"] for row in conn.execute("PRAGMA table_info(reports)").fetchall()
     }
     desired: dict[str, str] = {
+        "owner_username": "TEXT",
         "crop": "TEXT",
         "mandi": "TEXT",
         "recommendation": "TEXT",
@@ -88,6 +97,9 @@ def _ensure_report_columns(conn: sqlite3.Connection) -> None:
         "CREATE INDEX IF NOT EXISTS idx_reports_crop_mandi ON reports(crop, mandi)"
     )
     conn.execute(
+        "CREATE INDEX IF NOT EXISTS idx_reports_owner_created_at ON reports(owner_username, created_at DESC)"
+    )
+    conn.execute(
         "CREATE INDEX IF NOT EXISTS idx_reports_recommendation ON reports(recommendation)"
     )
     conn.execute(
@@ -100,7 +112,7 @@ def _backfill_report_columns(conn: sqlite3.Connection) -> None:
         """
         SELECT id, payload
         FROM reports
-        WHERE crop IS NULL OR mandi IS NULL OR recommendation IS NULL
+        WHERE owner_username IS NULL OR crop IS NULL OR mandi IS NULL OR recommendation IS NULL
            OR risk_level IS NULL OR current_price IS NULL OR confidence IS NULL
         """
     ).fetchall()
@@ -109,17 +121,22 @@ def _backfill_report_columns(conn: sqlite3.Connection) -> None:
             payload = json.loads(row["payload"])
         except (TypeError, ValueError, json.JSONDecodeError):
             continue
+        owner_username = _normalize_owner(payload.get("owner_username")) or _LEGACY_OWNER
+        payload["owner_username"] = owner_username
+        payload_json = json.dumps(payload, ensure_ascii=False)
         crop, mandi, recommendation, risk_level, current_price, confidence = (
             _extract_index_fields(payload)
         )
         conn.execute(
             """
             UPDATE reports
-            SET crop = ?, mandi = ?, recommendation = ?, risk_level = ?,
+            SET payload = ?, owner_username = ?, crop = ?, mandi = ?, recommendation = ?, risk_level = ?,
                 current_price = ?, confidence = ?
             WHERE id = ?
             """,
             (
+                payload_json,
+                owner_username,
                 crop,
                 mandi,
                 recommendation,
@@ -131,11 +148,12 @@ def _backfill_report_columns(conn: sqlite3.Connection) -> None:
         )
 
 
-def _build_report(data: dict, report_id: str) -> dict:
+def _build_report(data: dict, report_id: str, owner_username: str) -> dict:
     rec = data.get("recommendation") or {}
     now = datetime.now()
     return {
         "id": report_id,
+        "owner_username": owner_username,
         "crop": str(data.get("crop", "")),
         "mandi": str(data.get("mandi", "")),
         "date": now.strftime("%Y-%m-%d"),
@@ -196,6 +214,7 @@ def _initialize() -> None:
                     id TEXT PRIMARY KEY,
                     created_at TEXT NOT NULL,
                     payload TEXT NOT NULL,
+                    owner_username TEXT,
                     crop TEXT,
                     mandi TEXT,
                     recommendation TEXT,
@@ -214,6 +233,11 @@ def _initialize() -> None:
             if not existing_count:
                 for raw in _load_legacy_reports():
                     legacy_id = str(raw.get("id") or uuid.uuid4())[:8]
+                    owner_username = (
+                        _normalize_owner(raw.get("owner_username")) or _LEGACY_OWNER
+                    )
+                    payload_with_owner = dict(raw)
+                    payload_with_owner["owner_username"] = owner_username
                     (
                         crop,
                         mandi,
@@ -225,15 +249,16 @@ def _initialize() -> None:
                     conn.execute(
                         """
                         INSERT OR REPLACE INTO reports(
-                            id, created_at, payload, crop, mandi, recommendation,
+                            id, created_at, payload, owner_username, crop, mandi, recommendation,
                             risk_level, current_price, confidence
                         )
-                        VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?)
+                        VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
                         """,
                         (
                             legacy_id,
                             _parse_created_at(raw),
-                            json.dumps(raw, ensure_ascii=False),
+                            json.dumps(payload_with_owner, ensure_ascii=False),
+                            owner_username,
                             crop,
                             mandi,
                             recommendation,
@@ -248,13 +273,16 @@ def _initialize() -> None:
         _INITIALIZED = True
 
 
-def save_report(data: dict) -> str:
+def save_report(data: dict, owner_username: str) -> str:
     """
     Save a ForecastResponse dict as a report and return the new report ID.
     """
     _initialize()
+    owner = _normalize_owner(owner_username)
+    if owner is None:
+        raise ValueError("owner_username is required")
     report_id = str(uuid.uuid4())[:8]
-    report = _build_report(data, report_id)
+    report = _build_report(data, report_id, owner)
     crop, mandi, recommendation, risk_level, current_price, confidence = (
         _extract_index_fields(report)
     )
@@ -263,15 +291,16 @@ def save_report(data: dict) -> str:
         conn.execute(
             """
             INSERT INTO reports(
-                id, created_at, payload, crop, mandi, recommendation,
+                id, created_at, payload, owner_username, crop, mandi, recommendation,
                 risk_level, current_price, confidence
             )
-            VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?)
+            VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
             """,
             (
                 report_id,
                 datetime.now().isoformat(),
                 json.dumps(report, ensure_ascii=False),
+                owner,
                 crop,
                 mandi,
                 recommendation,
@@ -296,12 +325,19 @@ def save_report(data: dict) -> str:
     return report_id
 
 
-def get_all_reports() -> list:
+def get_all_reports(owner_username: str | None = None) -> list:
     _initialize()
+    owner = _normalize_owner(owner_username)
     with _connect() as conn:
-        rows = conn.execute(
-            "SELECT payload FROM reports ORDER BY created_at DESC"
-        ).fetchall()
+        if owner is None:
+            rows = conn.execute(
+                "SELECT payload FROM reports ORDER BY created_at DESC"
+            ).fetchall()
+        else:
+            rows = conn.execute(
+                "SELECT payload FROM reports WHERE owner_username = ? ORDER BY created_at DESC",
+                (owner,),
+            ).fetchall()
     reports: list[dict] = []
     for row in rows:
         try:
@@ -312,6 +348,7 @@ def get_all_reports() -> list:
 
 
 def query_reports(
+    owner_username: str | None = None,
     q: str | None = None,
     recommendation: str | None = None,
     risk_level: str | None = None,
@@ -322,6 +359,11 @@ def query_reports(
     _initialize()
     where_clauses: list[str] = []
     params: list[object] = []
+    owner = _normalize_owner(owner_username)
+
+    if owner is not None:
+        where_clauses.append("owner_username = ?")
+        params.append(owner)
 
     if q and q.strip():
         needle = f"%{q.strip().lower()}%"
@@ -379,13 +421,20 @@ def query_reports(
     }
 
 
-def get_report_by_id(report_id: str) -> Optional[dict]:
+def get_report_by_id(report_id: str, owner_username: str | None = None) -> Optional[dict]:
     _initialize()
+    owner = _normalize_owner(owner_username)
     with _connect() as conn:
-        row = conn.execute(
-            "SELECT payload FROM reports WHERE id = ?",
-            (report_id,),
-        ).fetchone()
+        if owner is None:
+            row = conn.execute(
+                "SELECT payload FROM reports WHERE id = ?",
+                (report_id,),
+            ).fetchone()
+        else:
+            row = conn.execute(
+                "SELECT payload FROM reports WHERE id = ? AND owner_username = ?",
+                (report_id, owner),
+            ).fetchone()
     if row is None:
         return None
     try:
@@ -394,10 +443,17 @@ def get_report_by_id(report_id: str) -> Optional[dict]:
         return None
 
 
-def delete_report_by_id(report_id: str) -> bool:
+def delete_report_by_id(report_id: str, owner_username: str | None = None) -> bool:
     _initialize()
+    owner = _normalize_owner(owner_username)
     with _connect() as conn:
-        cursor = conn.execute("DELETE FROM reports WHERE id = ?", (report_id,))
+        if owner is None:
+            cursor = conn.execute("DELETE FROM reports WHERE id = ?", (report_id,))
+        else:
+            cursor = conn.execute(
+                "DELETE FROM reports WHERE id = ? AND owner_username = ?",
+                (report_id, owner),
+            )
         conn.commit()
     return cursor.rowcount > 0
 

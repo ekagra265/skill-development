@@ -20,33 +20,36 @@ AgriPulse is a crop-market intelligence app with:
 - Metadata endpoint cache (TTL) for better responsiveness
 - Forecast endpoint cache (short TTL) for faster repeated requests
 - JWT login for report APIs (`/auth/login`, `/auth/me`)
+- Per-user report history/download/delete scoped to authenticated user
 
 ## Quick run (Windows)
 
 ### Backend only
 
-```cmd
-run-backend.cmd
+```powershell
+.\run-backend.cmd
 ```
 
 Backend docs: `http://127.0.0.1:9877/docs`
 
 ### Frontend only
 
-```cmd
-run-frontend.cmd
+```powershell
+.\run-frontend.cmd
 ```
 
 Frontend: `http://127.0.0.1:3000`
 
-By default the launcher runs frontend in production mode for faster/stable page loads.
-Set `AGRIPULSE_FRONTEND_MODE=dev` in `.env.local` only when doing active frontend development.
+By default the launcher runs frontend in `dev` mode for faster startup.
+Set `AGRIPULSE_FRONTEND_MODE=prod` in `.env.local` when you want production mode.
 
 ### Both (two terminals auto-opened)
 
-```cmd
-run-dev.cmd
+```powershell
+.\run-dev.cmd
 ```
+
+In PowerShell, always use `.\` for local scripts. In Command Prompt, you can run `run-dev.cmd` directly.
 
 ## Manual run commands
 
@@ -128,5 +131,5 @@ pnpm lint
 1. Replace in-memory metadata cache with Redis for multi-instance deployments.
 2. Move report storage from SQLite to PostgreSQL.
 3. Add background jobs for scheduled forecast generation.
-4. Add authentication and per-user saved forecasts.
+4. Add DB-backed users (hashed passwords + refresh tokens) instead of demo credentials.
 5. Add CI workflow for backend tests + frontend type checks on every push.

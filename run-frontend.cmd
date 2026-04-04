@@ -18,7 +18,7 @@ if exist "%ENV_FILE%" (
 if not defined NEXT_PUBLIC_API_BASE_URL set "NEXT_PUBLIC_API_BASE_URL=%DEFAULT_API_BASE_URL%"
 if not defined HOSTNAME set "HOSTNAME=127.0.0.1"
 if not defined PORT set "PORT=3000"
-if not defined AGRIPULSE_FRONTEND_MODE set "AGRIPULSE_FRONTEND_MODE=prod"
+if not defined AGRIPULSE_FRONTEND_MODE set "AGRIPULSE_FRONTEND_MODE=dev"
 if /i not "%AGRIPULSE_FRONTEND_MODE%"=="dev" if /i not "%AGRIPULSE_FRONTEND_MODE%"=="prod" set "AGRIPULSE_FRONTEND_MODE=prod"
 set "FRONTEND_URL=http://%HOSTNAME%:%PORT%"
 
@@ -84,7 +84,7 @@ if %ERRORLEVEL% EQU 0 (
     popd
     exit /b %EXIT_CODE%
   )
-  echo Starting AgriPulse frontend with pnpm in dev mode at %FRONTEND_URL%
+  echo Starting AgriPulse frontend with pnpm in dev mode at %FRONTEND_URL% (default)
   echo Using NEXT_PUBLIC_API_BASE_URL=%NEXT_PUBLIC_API_BASE_URL%
   pnpm.cmd dev --hostname %HOSTNAME% --port %PORT%
   set "EXIT_CODE=%ERRORLEVEL%"
@@ -111,7 +111,7 @@ if %ERRORLEVEL% EQU 0 (
     popd
     exit /b %EXIT_CODE%
   )
-  echo Starting AgriPulse frontend with npm in dev mode at %FRONTEND_URL%
+  echo Starting AgriPulse frontend with npm in dev mode at %FRONTEND_URL% (default)
   echo Using NEXT_PUBLIC_API_BASE_URL=%NEXT_PUBLIC_API_BASE_URL%
   npm.cmd run dev -- --hostname %HOSTNAME% --port %PORT%
   set "EXIT_CODE=%ERRORLEVEL%"

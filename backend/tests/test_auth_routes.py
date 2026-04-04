@@ -77,12 +77,21 @@ class AuthRouteTests(unittest.TestCase):
         with patch(
             "app.routes.reports.query_reports",
             return_value={"reports": [], "total": 0, "limit": 20, "offset": 0},
-        ):
+        ) as mocked_query:
             authenticated = self.client.get(
                 "/reports/history",
                 headers={"Authorization": f"Bearer {token}"},
             )
         self.assertEqual(authenticated.status_code, 200)
+        mocked_query.assert_called_once_with(
+            owner_username="admin",
+            q=None,
+            recommendation=None,
+            risk_level=None,
+            sort="date",
+            limit=20,
+            offset=0,
+        )
 
 
 if __name__ == "__main__":

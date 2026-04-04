@@ -31,6 +31,10 @@ echo.
 echo Backend : http://127.0.0.1:9877/docs
 echo Frontend: http://127.0.0.1:3000
 echo.
+start "" http://127.0.0.1:9877/docs >nul 2>nul
+start "" http://127.0.0.1:3000 >nul 2>nul
+echo Browser tabs opened for backend docs and frontend.
+echo.
 echo Close each terminal window to stop that service.
 
 exit /b 0

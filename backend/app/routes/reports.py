@@ -26,13 +26,13 @@ UserAuth = Annotated[AuthUser, Depends(require_auth_user)]
 
 
 @router.post("/save")
-async def save_forecast_report(payload: dict, _: ApiAuth, __: UserAuth) -> dict:
+async def save_forecast_report(payload: dict, _: ApiAuth, user: UserAuth) -> dict:
     """
     Save a forecast result as a report.
     Accepts the full ForecastResponse JSON body sent from the frontend.
     """
     try:
-        report_id = save_report(payload)
+        report_id = save_report(payload, owner_username=user["username"])
         return {"success": True, "report_id": report_id}
     except Exception as exc:
         raise HTTPException(status_code=500, detail=str(exc)) from exc
@@ -41,7 +41,7 @@ async def save_forecast_report(payload: dict, _: ApiAuth, __: UserAuth) -> dict:
 @router.get("/history")
 async def get_report_history(
     _: ApiAuth,
-    __: UserAuth,
+    user: UserAuth,
     q: str | None = None,
     recommendation: str | None = None,
     risk_level: str | None = Query(default=None, alias="riskLevel"),
@@ -52,6 +52,7 @@ async def get_report_history(
     """Return paginated report history with optional filters."""
     try:
         return query_reports(
+            owner_username=user["username"],
             q=q,
             recommendation=recommendation,
             risk_level=risk_level,
@@ -64,9 +65,9 @@ async def get_report_history(
 
 
 @router.get("/download/{report_id}")
-async def download_report_pdf(report_id: str, _: ApiAuth, __: UserAuth) -> Response:
+async def download_report_pdf(report_id: str, _: ApiAuth, user: UserAuth) -> Response:
     """Download a specific report as a PDF file."""
-    report = get_report_by_id(report_id)
+    report = get_report_by_id(report_id, owner_username=user["username"])
     if not report:
         raise HTTPException(status_code=404, detail=f"Report '{report_id}' not found")
     try:
@@ -82,9 +83,9 @@ async def download_report_pdf(report_id: str, _: ApiAuth, __: UserAuth) -> Respo
 
 
 @router.delete("/{report_id}")
-async def delete_report(report_id: str, _: ApiAuth, __: UserAuth) -> dict:
+async def delete_report(report_id: str, _: ApiAuth, user: UserAuth) -> dict:
     """Delete a saved report by ID."""
-    deleted = delete_report_by_id(report_id)
+    deleted = delete_report_by_id(report_id, owner_username=user["username"])
     if not deleted:
         raise HTTPException(status_code=404, detail=f"Report '{report_id}' not found")
     return {"success": True, "deleted_id": report_id}

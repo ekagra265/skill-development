@@ -208,6 +208,7 @@ class ApiEndpointIntegrationTests(unittest.TestCase):
         self.assertEqual(payload["total"], 1)
         self.assertEqual(payload["reports"][0]["id"], "abc12345")
         mocked_query.assert_called_once_with(
+            owner_username="local-dev",
             q="whe",
             recommendation="WAIT",
             risk_level="HIGH",
