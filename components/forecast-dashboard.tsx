@@ -130,10 +130,14 @@ export function ForecastDashboard({ data }: { data: ForecastResponse }) {
             <AlertTriangle className="mt-0.5 h-5 w-5 shrink-0 text-warning" />
             <div>
               <p className="text-sm font-semibold text-warning-foreground">
-                Limited History Mode
+                {data.model_reason === "prophet_failure"
+                  ? "Resilient Fallback Mode"
+                  : "Limited History Mode"}
               </p>
               <p className="text-sm text-muted-foreground">
-                This forecast uses baseline estimates because mandi history is limited. Treat the recommendation conservatively.
+                {data.model_reason === "prophet_failure"
+                  ? "Prophet model execution failed for this request, so a stable baseline forecast was used to keep results available."
+                  : "This forecast uses baseline estimates because mandi history is limited. Treat the recommendation conservatively."}
               </p>
             </div>
           </div>

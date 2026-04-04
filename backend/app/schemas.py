@@ -43,6 +43,7 @@ class ForecastResponse(BaseModel):
     trend_direction: Literal["up", "down", "flat"]
     expected_change_pct: float
     model_used: Literal["prophet", "baseline"] = "prophet"
+    model_reason: Literal["limited_history", "prophet_failure"] | None = None
     recommendation: RecommendationResult
     volatility_level: Literal["Low", "Medium", "High"]
     shock_alert: str | None

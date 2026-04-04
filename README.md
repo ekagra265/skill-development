@@ -16,7 +16,9 @@ AgriPulse is a crop-market intelligence app with:
 - Saved report history + PDF download (SQLite-backed persistence)
 - Server-side report search, filters, sort, and pagination
 - Baseline fallback model when data is limited (`model_used: baseline`)
+- Automatic fallback to baseline when Prophet runtime fails
 - Metadata endpoint cache (TTL) for better responsiveness
+- Forecast endpoint cache (short TTL) for faster repeated requests
 
 ## Quick run (Windows)
 

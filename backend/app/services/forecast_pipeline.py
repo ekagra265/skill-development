@@ -22,6 +22,7 @@ class ForecastPipelineResult(TypedDict):
     trend_direction: Literal["up", "down", "flat"]
     expected_change_pct: float
     model_used: Literal["prophet", "baseline"]
+    model_reason: Literal["limited_history", "prophet_failure"] | None
     recommendation: dict
     volatility_level: Literal["Low", "Medium", "High"]
     shock_alert: str | None
@@ -52,12 +53,14 @@ def run_forecast_pipeline(payload: ForecastRequest) -> ForecastPipelineResult:
         )
 
     using_baseline = len(prophet_history) < 30
+    model_reason: Literal["limited_history", "prophet_failure"] | None = None
     try:
         if using_baseline:
             forecast_points = run_baseline_forecast(
                 history=prophet_history,
                 periods=payload.days,
             )
+            model_reason = "limited_history"
             logger.warning(
                 "Using baseline forecast due to limited history | crop=%s | mandi=%s | rows=%s",
                 payload.crop,
@@ -65,10 +68,25 @@ def run_forecast_pipeline(payload: ForecastRequest) -> ForecastPipelineResult:
                 len(prophet_history),
             )
         else:
-            forecast_points = run_prophet_forecast(
-                history=prophet_history,
-                periods=payload.days,
-            )
+            try:
+                forecast_points = run_prophet_forecast(
+                    history=prophet_history,
+                    periods=payload.days,
+                )
+            except (RuntimeError, ValueError) as exc:
+                forecast_points = run_baseline_forecast(
+                    history=prophet_history,
+                    periods=payload.days,
+                )
+                using_baseline = True
+                model_reason = "prophet_failure"
+                logger.warning(
+                    "Prophet failed; switched to baseline forecast | crop=%s | mandi=%s | rows=%s | error=%s",
+                    payload.crop,
+                    payload.mandi,
+                    len(prophet_history),
+                    str(exc),
+                )
     except (RuntimeError, ValueError) as exc:
         raise ForecastError(str(exc)) from exc
 
@@ -119,6 +137,7 @@ def run_forecast_pipeline(payload: ForecastRequest) -> ForecastPipelineResult:
         ),
         "expected_change_pct": expected_change,
         "model_used": "baseline" if using_baseline else "prophet",
+        "model_reason": model_reason,
         "recommendation": recommendation,
         "volatility_level": volatility_level,
         "shock_alert": shock_alert,

@@ -30,6 +30,8 @@ class ForecastPipelineFallbackTests(unittest.TestCase):
         self.assertEqual(len(result["forecast"]), 7)
         self.assertEqual(result["recommendation"]["risk_level"], "HIGH")
         self.assertLessEqual(result["recommendation"]["confidence"], 45)
+        self.assertEqual(result["model_used"], "baseline")
+        self.assertEqual(result["model_reason"], "limited_history")
 
     @patch("app.services.forecast_pipeline.get_nearby_mandis", return_value=[])
     @patch("app.services.forecast_pipeline.resolve_state_for_market", return_value="TestState")
@@ -59,6 +61,33 @@ class ForecastPipelineFallbackTests(unittest.TestCase):
             result = run_forecast_pipeline(payload)
 
         prophet_mock.assert_called_once()
+        self.assertEqual(len(result["forecast"]), 7)
+        self.assertEqual(result["model_used"], "prophet")
+        self.assertIsNone(result["model_reason"])
+
+    @patch("app.services.forecast_pipeline.get_nearby_mandis", return_value=[])
+    @patch("app.services.forecast_pipeline.resolve_state_for_market", return_value="TestState")
+    def test_prophet_runtime_failure_falls_back_to_baseline(
+        self, _state_mock, _nearby_mock
+    ) -> None:
+        history = [
+            {"ds": datetime(2026, 1, 1) + timedelta(days=i), "y": 100.0 + i}
+            for i in range(35)
+        ]
+        payload = ForecastRequest(crop="Wheat", mandi="TestMandi", days=7, language="en")
+
+        with patch(
+            "app.services.forecast_pipeline.load_prophet_history",
+            return_value=history,
+        ), patch(
+            "app.services.forecast_pipeline.run_prophet_forecast",
+            side_effect=RuntimeError("prophet unavailable"),
+        ) as prophet_mock:
+            result = run_forecast_pipeline(payload)
+
+        prophet_mock.assert_called_once()
+        self.assertEqual(result["model_used"], "baseline")
+        self.assertEqual(result["model_reason"], "prophet_failure")
         self.assertEqual(len(result["forecast"]), 7)
 
 

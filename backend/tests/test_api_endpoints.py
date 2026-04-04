@@ -5,6 +5,7 @@ from unittest.mock import patch
 
 from fastapi.testclient import TestClient
 
+from app import main as main_module
 from app.core.config import settings
 from app.core.dependencies import get_forecast_service
 from app.main import app
@@ -22,6 +23,12 @@ class ApiEndpointIntegrationTests(unittest.TestCase):
 
     def setUp(self) -> None:
         app.dependency_overrides.clear()
+        with main_module._metadata_cache_lock:
+            main_module._metadata_cache.clear()
+        with main_module._forecast_cache_lock:
+            main_module._forecast_cache.clear()
+            main_module._forecast_cache_hits = 0
+            main_module._forecast_cache_misses = 0
         self.client = TestClient(app)
 
     def tearDown(self) -> None:
@@ -54,6 +61,7 @@ class ApiEndpointIntegrationTests(unittest.TestCase):
                 "trend_direction": "up",
                 "expected_change_pct": 2.5,
                 "model_used": "baseline",
+                "model_reason": "limited_history",
                 "recommendation": {
                     "action": "WAIT",
                     "expected_change_percent": 2.5,
@@ -92,6 +100,58 @@ class ApiEndpointIntegrationTests(unittest.TestCase):
         payload = response.json()
         self.assertEqual(payload["model_used"], "baseline")
         self.assertEqual(payload["recommendation"]["risk_level"], "HIGH")
+        self.assertEqual(payload["model_reason"], "limited_history")
+
+    def test_forecast_endpoint_uses_cache_for_repeated_payload(self) -> None:
+        calls = {"count": 0}
+
+        def fake_forecast_service(_payload):
+            calls["count"] += 1
+            return {
+                "crop": "Wheat",
+                "mandi": "TestMandi",
+                "current_price": 2500,
+                "trend_direction": "up",
+                "expected_change_pct": 2.5,
+                "model_used": "baseline",
+                "model_reason": "limited_history",
+                "recommendation": {
+                    "action": "WAIT",
+                    "expected_change_percent": 2.5,
+                    "message": "Test recommendation",
+                    "confidence": 42,
+                    "risk_level": "HIGH",
+                },
+                "volatility_level": "High",
+                "shock_alert": None,
+                "forecast": [
+                    {
+                        "ds": "2026-01-01",
+                        "yhat": 2520,
+                        "yhat_lower": 2460,
+                        "yhat_upper": 2580,
+                    }
+                ],
+                "nearby_mandis": [],
+                "insights": ["Test insight"],
+                "language": "en",
+            }
+
+        app.dependency_overrides[get_forecast_service] = lambda: fake_forecast_service
+
+        request_payload = {
+            "crop": "Wheat",
+            "mandi": "TestMandi",
+            "days": 1,
+            "language": "en",
+        }
+
+        first = self.client.post("/forecast", json=request_payload)
+        second = self.client.post("/forecast", json=request_payload)
+
+        self.assertEqual(first.status_code, 200)
+        self.assertEqual(second.status_code, 200)
+        self.assertEqual(calls["count"], 1)
 
     def test_reports_download_endpoint(self) -> None:
         report = {
@@ -169,6 +229,7 @@ class ApiEndpointIntegrationTests(unittest.TestCase):
         self.assertEqual(payload["status"], "ok")
         self.assertIn("report_store", payload)
         self.assertEqual(payload["report_store"]["backend"], "sqlite")
+        self.assertIn("forecast_cache", payload)
 
 
 if __name__ == "__main__":
