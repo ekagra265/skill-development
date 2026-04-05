@@ -382,12 +382,16 @@ export async function login(
   username: string,
   password: string
 ): Promise<LoginResponse> {
+  const cleanUsername = username.trim();
+  if (!cleanUsername) {
+    throw new Error("Username is required.");
+  }
   const res = await fetchWithTimeout(
     `${API_BASE_URL}/auth/login`,
     {
       method: "POST",
       headers: { "Content-Type": "application/json" },
-      body: JSON.stringify({ username, password }),
+      body: JSON.stringify({ username: cleanUsername, password }),
     },
     DEFAULT_TIMEOUT_MS
   );
@@ -403,12 +407,16 @@ export async function register(
   username: string,
   password: string
 ): Promise<LoginResponse> {
+  const cleanUsername = username.trim();
+  if (!cleanUsername) {
+    throw new Error("Username is required.");
+  }
   const res = await fetchWithTimeout(
     `${API_BASE_URL}/auth/register`,
     {
       method: "POST",
       headers: { "Content-Type": "application/json" },
-      body: JSON.stringify({ username, password }),
+      body: JSON.stringify({ username: cleanUsername, password }),
     },
     DEFAULT_TIMEOUT_MS
   );

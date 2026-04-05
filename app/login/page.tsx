@@ -1,35 +1,113 @@
 "use client";
 
-import { FormEvent, useState } from "react";
+import { FormEvent, useEffect, useState } from "react";
 import Link from "next/link";
-import { Loader2, LockKeyhole, LogIn } from "lucide-react";
+import { useRouter } from "next/navigation";
+import {
+  ArrowRight,
+  Eye,
+  EyeOff,
+  Loader2,
+  LockKeyhole,
+  LogIn,
+  UserPlus,
+} from "lucide-react";
 
 import { fetchCurrentUser, hasAccessToken, login, register } from "@/lib/api";
 import { Navbar } from "@/components/navbar";
 import { Footer } from "@/components/footer";
 
+const USERNAME_PATTERN = /^[a-zA-Z0-9_.-]{3,32}$/;
+const MIN_PASSWORD_LENGTH = 8;
+const LAST_USERNAME_KEY = "agripulse_last_username";
+
+type Mode = "login" | "register";
+
 export default function LoginPage() {
+  const router = useRouter();
+  const [mode, setMode] = useState<Mode>("login");
   const [username, setUsername] = useState("admin");
   const [password, setPassword] = useState("admin123");
-  const [loadingAction, setLoadingAction] = useState<
-    "login" | "register" | "verify" | null
-  >(null);
+  const [confirmPassword, setConfirmPassword] = useState("");
+  const [rememberUsername, setRememberUsername] = useState(true);
+  const [showPassword, setShowPassword] = useState(false);
+  const [showConfirmPassword, setShowConfirmPassword] = useState(false);
+  const [loadingAction, setLoadingAction] = useState<"submit" | "verify" | null>(null);
   const [message, setMessage] = useState("");
   const [error, setError] = useState("");
-  const loading = loadingAction !== null;
 
-  async function handleSubmit(event: FormEvent<HTMLFormElement>) {
+  const loading = loadingAction !== null;
+  const isRegisterMode = mode === "register";
+
+  useEffect(() => {
+    if (typeof window === "undefined") return;
+    const remembered = window.localStorage.getItem(LAST_USERNAME_KEY);
+    if (remembered?.trim()) {
+      setUsername(remembered.trim());
+    }
+  }, []);
+
+  function validateForm(): string | null {
+    const cleanUsername = username.trim();
+    const cleanPassword = password.trim();
+
+    if (!USERNAME_PATTERN.test(cleanUsername)) {
+      return "Username must be 3-32 chars (letters, numbers, ., _, -).";
+    }
+    if (cleanPassword.length < MIN_PASSWORD_LENGTH) {
+      return `Password must be at least ${MIN_PASSWORD_LENGTH} characters.`;
+    }
+    if (isRegisterMode && cleanPassword !== confirmPassword.trim()) {
+      return "Passwords do not match.";
+    }
+    return null;
+  }
+
+  function persistUsernamePreference(cleanUsername: string): void {
+    if (typeof window === "undefined") return;
+    if (rememberUsername) {
+      window.localStorage.setItem(LAST_USERNAME_KEY, cleanUsername);
+    } else {
+      window.localStorage.removeItem(LAST_USERNAME_KEY);
+    }
+  }
+
+  async function handleAuthSubmit(event: FormEvent<HTMLFormElement>) {
     event.preventDefault();
-    setLoadingAction("login");
     setError("");
     setMessage("");
+
+    const validationError = validateForm();
+    if (validationError) {
+      setError(validationError);
+      return;
+    }
+
+    setLoadingAction("submit");
     try {
-      const response = await login(username, password);
+      const cleanUsername = username.trim();
+      const response = isRegisterMode
+        ? await register(cleanUsername, password)
+        : await login(cleanUsername, password);
+      persistUsernamePreference(cleanUsername);
+
       setMessage(
-        `Signed in as ${response.user.username}. You can now access report history and PDF downloads.`
+        isRegisterMode
+          ? `Account created for ${response.user.username}. Redirecting to history...`
+          : `Signed in as ${response.user.username}. Redirecting to history...`
       );
+
+      setTimeout(() => {
+        router.push("/history");
+      }, 700);
     } catch (err) {
-      setError(err instanceof Error ? err.message : "Login failed.");
+      setError(
+        err instanceof Error
+          ? err.message
+          : isRegisterMode
+          ? "Registration failed."
+          : "Login failed."
+      );
     } finally {
       setLoadingAction(null);
     }
@@ -49,21 +127,14 @@ export default function LoginPage() {
     }
   }
 
-  async function handleRegister() {
-    setLoadingAction("register");
+  function switchMode(nextMode: Mode): void {
+    setMode(nextMode);
     setError("");
     setMessage("");
-    try {
-      const response = await register(username, password);
-      setMessage(
-        `Account created for ${response.user.username}. You are now signed in.`
-      );
-    } catch (err) {
-      setError(err instanceof Error ? err.message : "Registration failed.");
-    } finally {
-      setLoadingAction(null);
-    }
   }
+
+  const submitLabel = isRegisterMode ? "Create Account" : "Sign In";
+  const submitLoadingLabel = isRegisterMode ? "Creating account..." : "Signing in...";
 
   return (
     <div className="flex min-h-screen flex-col">
@@ -76,18 +147,49 @@ export default function LoginPage() {
                 <LockKeyhole className="h-5 w-5" />
               </div>
               <div>
-                <h1 className="text-xl font-bold text-foreground">Sign In</h1>
+                <h1 className="text-xl font-bold text-foreground">Account Access</h1>
                 <p className="text-sm text-muted-foreground">
-                  Required for report history and PDF endpoints.
+                  Sign in or create an account for report history and PDF endpoints.
                 </p>
               </div>
             </div>
 
-            <form onSubmit={handleSubmit} className="space-y-4">
+            <div className="mb-4 grid grid-cols-2 gap-2 rounded-xl bg-secondary p-1">
+              <button
+                type="button"
+                onClick={() => switchMode("login")}
+                disabled={loading}
+                className={`rounded-lg px-3 py-2 text-sm font-semibold transition-colors ${
+                  mode === "login"
+                    ? "bg-card text-foreground shadow-sm"
+                    : "text-muted-foreground hover:text-foreground"
+                }`}
+              >
+                <span className="inline-flex items-center gap-1.5">
+                  <LogIn className="h-4 w-4" />
+                  Sign In
+                </span>
+              </button>
+              <button
+                type="button"
+                onClick={() => switchMode("register")}
+                disabled={loading}
+                className={`rounded-lg px-3 py-2 text-sm font-semibold transition-colors ${
+                  mode === "register"
+                    ? "bg-card text-foreground shadow-sm"
+                    : "text-muted-foreground hover:text-foreground"
+                }`}
+              >
+                <span className="inline-flex items-center gap-1.5">
+                  <UserPlus className="h-4 w-4" />
+                  Create Account
+                </span>
+              </button>
+            </div>
+
+            <form onSubmit={handleAuthSubmit} className="space-y-4">
               <div>
-                <label className="mb-1 block text-sm font-medium text-foreground">
-                  Username
-                </label>
+                <label className="mb-1 block text-sm font-medium text-foreground">Username</label>
                 <input
                   value={username}
                   onChange={(e) => setUsername(e.target.value)}
@@ -96,19 +198,90 @@ export default function LoginPage() {
                   required
                 />
               </div>
+
               <div>
-                <label className="mb-1 block text-sm font-medium text-foreground">
-                  Password
-                </label>
-                <input
-                  value={password}
-                  onChange={(e) => setPassword(e.target.value)}
-                  className="w-full rounded-lg border border-border bg-background px-3 py-2 text-sm outline-none ring-ring focus:ring-2"
-                  type="password"
-                  autoComplete="current-password"
-                  required
-                />
+                <label className="mb-1 block text-sm font-medium text-foreground">Password</label>
+                <div className="relative">
+                  <input
+                    value={password}
+                    onChange={(e) => setPassword(e.target.value)}
+                    className="w-full rounded-lg border border-border bg-background px-3 py-2 pr-11 text-sm outline-none ring-ring focus:ring-2"
+                    type={showPassword ? "text" : "password"}
+                    autoComplete={isRegisterMode ? "new-password" : "current-password"}
+                    required
+                  />
+                  <button
+                    type="button"
+                    onClick={() => setShowPassword((value) => !value)}
+                    className="absolute right-2 top-1/2 -translate-y-1/2 rounded-md p-1 text-muted-foreground transition-colors hover:bg-secondary hover:text-foreground"
+                    aria-label={showPassword ? "Hide password" : "Show password"}
+                  >
+                    {showPassword ? <EyeOff className="h-4 w-4" /> : <Eye className="h-4 w-4" />}
+                  </button>
+                </div>
               </div>
+
+              {isRegisterMode && (
+                <div>
+                  <label className="mb-1 block text-sm font-medium text-foreground">Confirm Password</label>
+                  <div className="relative">
+                    <input
+                      value={confirmPassword}
+                      onChange={(e) => setConfirmPassword(e.target.value)}
+                      className="w-full rounded-lg border border-border bg-background px-3 py-2 pr-11 text-sm outline-none ring-ring focus:ring-2"
+                      type={showConfirmPassword ? "text" : "password"}
+                      autoComplete="new-password"
+                      required
+                    />
+                    <button
+                      type="button"
+                      onClick={() => setShowConfirmPassword((value) => !value)}
+                      className="absolute right-2 top-1/2 -translate-y-1/2 rounded-md p-1 text-muted-foreground transition-colors hover:bg-secondary hover:text-foreground"
+                      aria-label={showConfirmPassword ? "Hide password" : "Show password"}
+                    >
+                      {showConfirmPassword ? (
+                        <EyeOff className="h-4 w-4" />
+                      ) : (
+                        <Eye className="h-4 w-4" />
+                      )}
+                    </button>
+                  </div>
+                </div>
+              )}
+
+              <div className="flex items-center justify-between gap-3 rounded-lg border border-border/70 bg-background/70 px-3 py-2">
+                <label className="flex items-center gap-2 text-sm text-muted-foreground">
+                  <input
+                    type="checkbox"
+                    checked={rememberUsername}
+                    onChange={(event) => setRememberUsername(event.target.checked)}
+                    className="h-4 w-4 accent-primary"
+                    disabled={loading}
+                  />
+                  Remember username
+                </label>
+                <button
+                  type="button"
+                  onClick={() => {
+                    setMode("login");
+                    setUsername("admin");
+                    setPassword("admin123");
+                    setConfirmPassword("admin123");
+                    setError("");
+                    setMessage("Demo credentials filled. Press Sign In.");
+                  }}
+                  disabled={loading}
+                  className="text-xs font-medium text-primary transition-colors hover:text-primary/80 disabled:opacity-50"
+                >
+                  Use Demo Credentials
+                </button>
+              </div>
+
+              <p className="text-xs text-muted-foreground">
+                Username: 3-32 chars (`a-z`, `0-9`, `.`, `_`, `-`) and password at least {" "}
+                {MIN_PASSWORD_LENGTH} chars.
+              </p>
+
               <button
                 type="submit"
                 disabled={loading}
@@ -117,30 +290,13 @@ export default function LoginPage() {
                 {loading ? (
                   <>
                     <Loader2 className="h-4 w-4 animate-spin" />
-                    {loadingAction === "login" ? "Signing in..." : "Working..."}
+                    {loadingAction === "submit" ? submitLoadingLabel : "Working..."}
                   </>
                 ) : (
                   <>
-                    <LogIn className="h-4 w-4" />
-                    Sign In
+                    {isRegisterMode ? <UserPlus className="h-4 w-4" /> : <LogIn className="h-4 w-4" />}
+                    {submitLabel}
                   </>
-                )}
-              </button>
-              <button
-                type="button"
-                onClick={handleRegister}
-                disabled={loading}
-                className="inline-flex w-full items-center justify-center gap-2 rounded-lg border border-border bg-card px-4 py-2.5 text-sm font-semibold text-foreground transition-colors hover:bg-secondary disabled:opacity-60"
-              >
-                {loading ? (
-                  <>
-                    <Loader2 className="h-4 w-4 animate-spin" />
-                    {loadingAction === "register"
-                      ? "Creating account..."
-                      : "Working..."}
-                  </>
-                ) : (
-                  "Create Account"
                 )}
               </button>
             </form>
@@ -156,9 +312,15 @@ export default function LoginPage() {
               </button>
               <Link
                 href="/history"
-                className="rounded-lg border border-border bg-card px-3 py-2 text-center text-sm font-medium text-foreground transition-colors hover:bg-secondary"
+                className="inline-flex items-center justify-center gap-1 rounded-lg border border-border bg-card px-3 py-2 text-center text-sm font-medium text-foreground transition-colors hover:bg-secondary"
               >
-                Open History
+                Open History <ArrowRight className="h-4 w-4" />
+              </Link>
+              <Link
+                href="/dashboard"
+                className="col-span-2 inline-flex items-center justify-center gap-1 rounded-lg border border-border bg-card px-3 py-2 text-center text-sm font-medium text-foreground transition-colors hover:bg-secondary"
+              >
+                Open Dashboard <ArrowRight className="h-4 w-4" />
               </Link>
             </div>
 
