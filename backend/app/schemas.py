@@ -36,12 +36,50 @@ class MandiOption(BaseModel):
     expected_7d_change_pct: float
 
 
+class LoginRequest(BaseModel):
+    username: str
+    password: str
+
+
+class RegisterRequest(BaseModel):
+    username: str
+    password: str
+
+
+class RefreshTokenRequest(BaseModel):
+    refresh_token: str
+
+
+class LogoutRequest(BaseModel):
+    refresh_token: str
+
+
+class AuthenticatedUser(BaseModel):
+    username: str
+    role: str
+
+
+class LoginResponse(BaseModel):
+    access_token: str
+    refresh_token: str
+    token_type: Literal["bearer"] = "bearer"
+    expires_in: int
+    refresh_expires_in: int
+    user: AuthenticatedUser
+
+
+class LogoutResponse(BaseModel):
+    success: bool
+
+
 class ForecastResponse(BaseModel):
     crop: str
     mandi: str
     current_price: float
     trend_direction: Literal["up", "down", "flat"]
     expected_change_pct: float
+    model_used: Literal["prophet", "baseline"] = "prophet"
+    model_reason: Literal["limited_history", "prophet_failure"] | None = None
     recommendation: RecommendationResult
     volatility_level: Literal["Low", "Medium", "High"]
     shock_alert: str | None

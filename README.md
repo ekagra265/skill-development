@@ -1,65 +1,148 @@
-# AgriPulse - Real-Time Crop Price Intelligence (Starter)
+# AgriPulse
 
-AgriPulse is a starter implementation for a 7-day mandi price intelligence system.
-This version is intentionally lightweight so you can integrate real data pipelines and ML models later.
+AgriPulse is a crop-market intelligence app with:
+- Next.js frontend (`app/`, `components/`, `lib/`)
+- FastAPI backend (`backend/app`)
+- Forecast + recommendation pipeline
+- Report history and PDF download endpoints
+- Optional external mandi price source (data.gov.in), with local CSV fallback
 
-## What is included
+## Current capabilities
 
-- FastAPI backend scaffold
-- Forecast stub (replaceable with Prophet/ARIMA/LSTM)
-- Sell/Hold recommendation logic
-- Volatility meter (Low/Medium/High)
-- Price shock alert detection
-- Nearby mandi comparison stub
-- Bilingual responses (`en`, `hi`)
-- Streamlit frontend starter for quick demo
+- 7-day forecast response for crop/mandi
+- Recommendation (`WAIT`, `SELL NOW`, `HOLD`) with confidence/risk
+- Volatility and shock alert output
+- Best mandi comparison endpoint
+- Saved report history + PDF download (SQLite-backed persistence)
+- Server-side report search, filters, sort, and pagination
+- Baseline fallback model when data is limited (`model_used: baseline`)
+- Automatic fallback to baseline when Prophet runtime fails
+- Metadata endpoint cache (TTL) for better responsiveness
+- Forecast endpoint cache (short TTL) for faster repeated requests
+- DB-backed auth with hashed passwords and refresh-token rotation
+- Per-user report history/download/delete scoped to authenticated user
 
-## Project structure
+## Quick run (Windows)
 
-```text
-backend/
-  app/
-    core/config.py
-    services/
-      forecast.py
-      recommendation.py
-      volatility.py
-      alerts.py
-      mandi_lookup.py
-      insights.py
-      i18n.py
-    main.py
-    schemas.py
-  requirements.txt
-frontend/
-  app.py
-data/
+### Backend only
+
+```powershell
+.\run-backend.cmd
 ```
 
-## Quick start
+Backend docs: `http://127.0.0.1:9877/docs`
 
-### 1) Backend
+### Frontend only
 
-```bash
+```powershell
+.\run-frontend.cmd
+```
+
+Frontend: `http://127.0.0.1:3000`
+
+By default the launcher runs frontend in `dev` mode for faster startup.
+Set `AGRIPULSE_FRONTEND_MODE=prod` in `.env.local` when you want production mode.
+If frontend is already running and you want fresh startup logs, run:
+
+```powershell
+.\run-frontend.cmd restart
+```
+
+### Both (two terminals auto-opened)
+
+```powershell
+.\run-dev.cmd
+```
+
+In PowerShell, always use `.\` for local scripts. In Command Prompt, you can run `run-dev.cmd` directly.
+
+## Manual run commands
+
+### Backend
+
+```cmd
 cd backend
-pip install -r requirements.txt
-uvicorn app.main:app --reload
+..\.venv311\Scripts\python.exe -m pip install -r requirements.txt
+..\.venv311\Scripts\python.exe -m uvicorn app.main:app --host 127.0.0.1 --port 9877
 ```
 
-API docs: `http://127.0.0.1:8000/docs`
+### Frontend
 
-### 2) Frontend (optional)
-
-```bash
-cd frontend
-pip install streamlit requests
-streamlit run app.py
+```cmd
+pnpm install
+pnpm dev
 ```
 
-## Suggested next integrations
+If `pnpm` is unavailable:
 
-1. Replace `services/forecast.py` with Prophet/ARIMA/LSTM training + model registry.
-2. Add Agmarknet ETL job and store prices in PostgreSQL.
-3. Replace `services/mandi_lookup.py` with geospatial distance logic.
-4. Add auth and user profiles for district/crop preferences.
-5. Add scheduled daily forecast refresh.
+```cmd
+npm install
+npm run dev
+```
+
+## Environment variables
+
+Copy `.env.example` to `.env.local` and adjust values as needed.
+
+Important keys:
+- `NEXT_PUBLIC_API_BASE_URL` (frontend -> backend URL)
+- `NEXT_PUBLIC_API_KEY` (optional; only needed when backend key auth is enabled)
+- `AGRIPULSE_API_KEY_ENABLED` (`0` by default)
+- `AGRIPULSE_API_KEY`
+- `AGRIPULSE_PRICE_SOURCE` (`local_csv` recommended for local development)
+- `AGRIPULSE_REPORTS_DB_PATH` (optional custom SQLite path)
+- `AGRIPULSE_AUTH_ENABLED` (`1` enables JWT protection for report APIs)
+- `AGRIPULSE_AUTH_DB_PATH` (optional custom SQLite path for users/tokens)
+- `AGRIPULSE_AUTH_ALLOW_SIGNUP` (`1` allows `/auth/register`)
+- `AGRIPULSE_AUTH_PASSWORD_MIN_LENGTH` (minimum password size for new users)
+- `AGRIPULSE_AUTH_REFRESH_TOKEN_EXP_DAYS` (refresh token lifetime)
+- `AGRIPULSE_AUTH_BOOTSTRAP_DEMO_USER` (`1` seeds admin if missing)
+- `AGRIPULSE_AUTH_DEMO_USERNAME` / `AGRIPULSE_AUTH_DEMO_PASSWORD` (demo login credentials)
+
+## Docker
+
+```cmd
+docker compose up --build
+```
+
+- Frontend: `http://localhost:3000`
+- Backend: `http://localhost:9877/docs`
+
+## Testing
+
+### Backend tests
+
+```cmd
+cd backend
+..\.venv311\Scripts\python.exe -m unittest discover -s tests -p "test_*.py" -v
+```
+
+### Frontend type-check
+
+```cmd
+pnpm lint
+```
+
+## API endpoints
+
+- `GET /health`
+- `GET /metadata`
+- `POST /forecast`
+- `GET /best-mandi`
+- `POST /auth/register`
+- `POST /auth/login`
+- `POST /auth/refresh`
+- `POST /auth/logout`
+- `GET /auth/me`
+- `POST /reports/save`
+- `GET /reports/history`
+- `GET /reports/download/{report_id}`
+- `DELETE /reports/{report_id}`
+
+## Upgrade roadmap
+
+1. Replace in-memory metadata cache with Redis for multi-instance deployments.
+2. Move report storage from SQLite to PostgreSQL.
+3. Add background jobs for scheduled forecast generation.
+4. Add role-based authorization for admin-only endpoints.
+5. Add CI workflow for backend tests + frontend type checks on every push.
